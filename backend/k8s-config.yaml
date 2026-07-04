@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: symbioai-config
+data:
+  cors-origins: "https://anikjain4470.github.io/symbio.ai"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: symbioai-secrets
+type: Opaque
+stringData:
+  database-url: "postgresql+psycopg://user:password@host:5432/symbioai"
+  secret-key: "change-me-in-production"

@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: symbioai-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: symbioai-backend
+  template:
+    metadata:
+      labels:
+        app: symbioai-backend
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/ANIKJAIN4470/symbio.ai/symbioai-backend:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: symbioai-secrets
+              key: database-url
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: symbioai-secrets
+              key: secret-key
+        - name: CORS_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: symbioai-config
+              key: cors-origins
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: symbioai-backend-service
+spec:
+  selector:
+    app: symbioai-backend
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000
+  type: LoadBalancer
