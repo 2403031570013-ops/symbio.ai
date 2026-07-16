@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional
 from app.models.user import UserRole
 
@@ -18,12 +18,33 @@ class UserLogin(BaseModel):
     password: str
 
 
+class OtpRequest(BaseModel):
+    email: EmailStr
+
+
+class OtpVerification(OtpRequest):
+    otp: str
+
+
+class FactoryVerification(BaseModel):
+    factory_code: str
+
+
+class MobileOtpRequest(BaseModel):
+    user_id: str
+    phone_number: str
+
+
+class MobileOtpVerification(BaseModel):
+    user_id: str
+    otp: str
+
+
 class UserOut(UserBase):
     id: str
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Token(BaseModel):

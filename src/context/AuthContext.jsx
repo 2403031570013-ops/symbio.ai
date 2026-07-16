@@ -1,15 +1,18 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
+import { getApiError } from '../services/response';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('symbioai_token');
     if (!token) {
+      setIsAuthLoading(false);
       return;
     }
 
@@ -26,13 +29,19 @@ export function AuthProvider({ children }) {
       .catch(() => {
         localStorage.removeItem('symbioai_token');
         setIsAuthenticated(false);
+      })
+      .finally(() => {
+        setIsAuthLoading(false);
       });
   }, []);
 
-  const login = async (email, password) => {
-    const response = await api.post('/auth/login', { email, password });
-    if (!response.data?.success) {
-      throw new Error(response.data?.message || 'Unable to sign in');
+  const login = async (email, password, rememberMe = true) => {
+    let response;
+    try {
+      response = await api.post('/auth/login', { email, password, remember_me: rememberMe });
+      if (!response.data?.success) throw new Error(response.data?.message || 'Unable to sign in');
+    } catch (error) {
+      throw new Error(getApiError(error, 'Unable to sign in'));
     }
 
     localStorage.setItem('symbioai_token', response.data.data.token);
@@ -42,20 +51,39 @@ export function AuthProvider({ children }) {
   };
 
   const register = async (fullName, email, password, role = 'Waste Producer') => {
-    const response = await api.post('/auth/register', { full_name: fullName, email, password, role });
-    if (!response.data?.success) {
-      throw new Error(response.data?.message || 'Unable to create account');
+    let response;
+    try {
+      response = await api.post('/auth/register', { full_name: fullName, email, password, role });
+      if (!response.data?.success) throw new Error(response.data?.message || 'Unable to create account');
+    } catch (error) {
+      throw new Error(getApiError(error, 'Unable to create account'));
     }
 
-    localStorage.setItem('symbioai_token', response.data.data.token || '');
-    setUser(response.data.data.user || null);
+    return response.data?.data || {};
+  };
+
+  const googleLoginWithCredential = async (credential) => {
+    let response;
+    try {
+      response = await api.post('/auth/google', { credential });
+      if (!response.data?.success) throw new Error(response.data?.message || 'Unable to sign in with Google');
+    } catch (error) {
+      throw new Error(getApiError(error, 'Unable to sign in with Google'));
+    }
+
+    localStorage.setItem('symbioai_token', response.data.data.token);
+    setUser(response.data.data.user);
     setIsAuthenticated(true);
     return true;
   };
 
-  const resetPassword = (email) => {
-    setUser((prev) => (prev ? { ...prev, email } : prev));
-    return true;
+  const resetPassword = async (email) => {
+    try {
+      const response = await api.post('/auth/forgot-password', { email });
+      return response.data?.success === true;
+    } catch (error) {
+      throw new Error(getApiError(error, 'Unable to request password reset'));
+    }
   };
 
   const logout = async () => {
@@ -71,8 +99,8 @@ export function AuthProvider({ children }) {
   };
 
   const value = useMemo(
-    () => ({ user, isAuthenticated, login, register, resetPassword, logout }),
-    [user, isAuthenticated]
+    () => ({ user, isAuthenticated, isAuthLoading, login, register, googleLoginWithCredential, resetPassword, logout }),
+    [user, isAuthenticated, isAuthLoading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

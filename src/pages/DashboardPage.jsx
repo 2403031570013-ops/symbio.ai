@@ -1,17 +1,24 @@
 import { ArrowRight, TrendingUp } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import StatCard from '../components/ui/StatCard';
 import PageHeader from '../components/ui/PageHeader';
 import ChartCard from '../components/ui/ChartCard';
 import { dashboardStats, sustainabilitySeries, recentTransactions, aiMatches } from '../services/dummyData';
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Operations dashboard"
         description="Track material exchanges, carbon impact, and high-confidence matches from one control center."
         action={
-          <button className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 font-semibold text-slate-950 transition hover:bg-emerald-400">
+          <button
+            type="button"
+            onClick={() => navigate('/listings')}
+            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 font-semibold text-slate-950 transition hover:bg-emerald-400"
+          >
             Create new listing
             <ArrowRight size={16} />
           </button>
@@ -25,7 +32,7 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <ChartCard title="Sustainability performance" caption="CO₂ avoided trend over the last 6 months">
+        <ChartCard title="Sustainability performance" caption="CO2 avoided trend over the last 6 months">
           <div className="space-y-4">
             <div className="flex items-end gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
               {sustainabilitySeries.map((point) => (

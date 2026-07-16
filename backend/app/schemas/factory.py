@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class FactoryBase(BaseModel):
@@ -24,5 +24,4 @@ class FactoryOut(FactoryBase):
     verified: bool
     owner_id: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

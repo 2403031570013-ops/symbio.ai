@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from app.api.v1.api import api_router
 from app.core.config import settings
-from app.core.middleware import CacheControlMiddleware
+from app.core.middleware import CacheControlMiddleware, RateLimitMiddleware
 from app.db.init_db import init_db
 
 load_dotenv()
@@ -21,6 +21,7 @@ logger = logging.getLogger("symbioai")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings.validate_production_secrets()
     init_db()
     logger.info("Application startup complete")
     yield
@@ -38,12 +39,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 app.add_middleware(CacheControlMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 

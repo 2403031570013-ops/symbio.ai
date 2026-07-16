@@ -46,6 +46,10 @@ def create_material(material_in: MaterialCreate, db: Session = Depends(get_db), 
         quantity=material_in.quantity,
         frequency=material_in.frequency,
         certificate=material_in.certificate,
+        certificate_url=material_in.certificate_url,
+        photo_url=material_in.photo_url,
+        lab_report_url=material_in.lab_report_url,
+        storage_provider=material_in.storage_provider,
         owner_id=current_user.id,
     )
     db.add(material)

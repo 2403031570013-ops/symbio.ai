@@ -1,0 +1,38 @@
+{
+  "name": "SymbioAI Industrial Symbiosis Platform",
+  "short_name": "SymbioAI",
+  "description": "Enterprise industrial symbiosis, waste matchmaking, and ESG tracking.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#031427",
+  "theme_color": "#10b981",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Marketplace",
+      "short_name": "Marketplace",
+      "url": "/marketplace",
+      "icons": [{ "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

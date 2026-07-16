@@ -10,26 +10,26 @@ import {
 
 const metrics = [
   { label: 'Revenue Generated', value: '$245K', change: '+18% vs last month' },
-  { label: 'CO₂ Avoided', value: '1,240 t', change: '+12% this quarter' },
+  { label: 'CO2 Avoided', value: '1,240 t', change: '+12% this quarter' },
   { label: 'Landfill Diversion', value: '3,820 t', change: '92% target achieved' },
   { label: 'AI Matches', value: '42', change: '6 new this week' },
 ];
 
 const matches = [
   {
-    name: 'Steel slag → Cement blend',
+    name: 'Steel slag -> Cement blend',
     partner: 'Northstar Steel',
     score: '98%',
     impact: '1,200 t diverted',
   },
   {
-    name: 'Process heat → District network',
+    name: 'Process heat -> District network',
     partner: 'Harbor Chemicals',
     score: '94%',
     impact: '480 MWh recovered',
   },
   {
-    name: 'Textile offcuts → Insulation feedstock',
+    name: 'Textile offcuts -> Insulation feedstock',
     partner: 'BlueLoop Textiles',
     score: '91%',
     impact: '360 t reused',
@@ -51,7 +51,7 @@ export default function Dashboard() {
             <div className="max-w-2xl">
               <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-sm font-medium text-emerald-300">
                 <Leaf size={16} />
-                Symbiotic Flux • Industrial symbiosis intelligence
+                Symbiotic Flux - Industrial symbiosis intelligence
               </div>
               <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
                 Turn industrial waste into a circular revenue stream.

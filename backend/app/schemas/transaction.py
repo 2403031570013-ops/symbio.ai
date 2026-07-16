@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class TransactionBase(BaseModel):
@@ -15,5 +15,4 @@ class TransactionCreate(TransactionBase):
 class TransactionOut(TransactionBase):
     id: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

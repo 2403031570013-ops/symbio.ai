@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 
 
@@ -9,6 +9,10 @@ class MaterialBase(BaseModel):
     quantity: str
     frequency: str
     certificate: str
+    certificate_url: Optional[str] = None
+    photo_url: Optional[str] = None
+    lab_report_url: Optional[str] = None
+    storage_provider: Optional[str] = None
 
 
 class MaterialCreate(MaterialBase):
@@ -24,5 +28,4 @@ class MaterialOut(MaterialBase):
     owner_id: Optional[str] = None
     status: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

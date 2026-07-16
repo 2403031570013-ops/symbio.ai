@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AnalyticsOut(BaseModel):
@@ -7,5 +7,4 @@ class AnalyticsOut(BaseModel):
     landfill_diversion: float
     active_matches: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
