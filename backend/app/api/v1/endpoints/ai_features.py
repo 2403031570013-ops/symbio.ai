@@ -3,11 +3,12 @@ AI Features - Production-Grade Endpoints
 Features 1-6: AI Recommendations, Demand Forecasting, Price Forecasting,
               Predictive Maintenance, Anomaly Detection, Smart Matching
 """
+import asyncio
 from datetime import datetime, timezone
+from typing import Any, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from typing import List, Optional
-from app.db.session import get_db
+
 from app.models.ai_recommendations import AIRecommendation, DemandPrediction, PriceForecast
 from app.models.marketplace_operations import AnomalyDetection, PredictiveMaintenance
 from app.models.supply_chain import Inventory
@@ -22,6 +23,16 @@ from app.core.security import get_current_user
 
 router = APIRouter()
 
+Session = Any
+
+
+def get_db() -> None:
+    return None
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
 
 # ── Feature 1: AI Symbiosis Recommendations ──────────────────────────────────
 @router.post("/recommendations", response_model=AIRecommendationResponse)
@@ -34,9 +45,7 @@ def create_recommendation(
     db_rec = AIRecommendation(**recommendation.dict(), user_id=current_user.id)
     import uuid
     db_rec.id = str(uuid.uuid4())
-    db.add(db_rec)
-    db.commit()
-    db.refresh(db_rec)
+    _run(db_rec.insert())
     return db_rec
 
 
@@ -49,10 +58,10 @@ def get_recommendations(
     current_user=Depends(get_current_user)
 ):
     """Feature 1: Get user AI recommendations with optional status filter"""
-    q = db.query(AIRecommendation).filter(AIRecommendation.user_id == current_user.id)
+    q = AIRecommendation.find(AIRecommendation.user_id == current_user.id)
     if status:
-        q = q.filter(AIRecommendation.status == status)
-    recs = q.order_by(AIRecommendation.created_at.desc()).offset(skip).limit(limit).all()
+        q = q.find(AIRecommendation.status == status)
+    recs = _run(q.sort(-AIRecommendation.created_at).skip(skip).limit(limit).to_list())
     summary = {
         "total": len(recs),
         "pending": sum(1 for r in recs if r.status == "pending"),
@@ -87,17 +96,14 @@ def update_recommendation_status(
     current_user=Depends(get_current_user)
 ):
     """Feature 1: Update recommendation lifecycle status"""
-    rec = db.query(AIRecommendation).filter(
-        AIRecommendation.id == recommendation_id,
-        AIRecommendation.user_id == current_user.id
-    ).first()
+    rec = _run(AIRecommendation.find_one(AIRecommendation.id == recommendation_id, AIRecommendation.user_id == current_user.id))
     if not rec:
         raise HTTPException(status_code=404, detail="Recommendation not found")
     valid_statuses = ["pending", "accepted", "rejected", "implemented"]
     if status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Status must be one of: {valid_statuses}")
     rec.status = status
-    db.commit()
+    _run(rec.save())
     return {"success": True, "message": f"Recommendation status updated to '{status}'", "data": {"id": recommendation_id, "status": status}}
 
 
@@ -112,9 +118,7 @@ def create_demand_prediction(
     import uuid
     db_prediction = DemandPrediction(**prediction.dict())
     db_prediction.id = str(uuid.uuid4())
-    db.add(db_prediction)
-    db.commit()
-    db.refresh(db_prediction)
+    _run(db_prediction.insert())
     return db_prediction
 
 
@@ -125,9 +129,7 @@ def get_demand_predictions(
     current_user=Depends(get_current_user)
 ):
     """Feature 2: Get demand forecasts with market signals analysis"""
-    predictions = db.query(DemandPrediction).filter(
-        DemandPrediction.material_id == material_id
-    ).order_by(DemandPrediction.prediction_date.desc()).all()
+    predictions = _run(DemandPrediction.find(DemandPrediction.material_id == material_id).sort(-DemandPrediction.prediction_date).to_list())
 
     # Compute trend direction
     trend = "stable"
@@ -167,9 +169,7 @@ def create_price_forecast(
     import uuid
     db_forecast = PriceForecast(**forecast.dict())
     db_forecast.id = str(uuid.uuid4())
-    db.add(db_forecast)
-    db.commit()
-    db.refresh(db_forecast)
+    _run(db_forecast.insert())
     return db_forecast
 
 
@@ -180,9 +180,7 @@ def get_price_forecasts(
     current_user=Depends(get_current_user)
 ):
     """Feature 3: Get price forecasts with profitability analysis"""
-    forecasts = db.query(PriceForecast).filter(
-        PriceForecast.material_id == material_id
-    ).order_by(PriceForecast.target_date.desc()).all()
+    forecasts = _run(PriceForecast.find(PriceForecast.material_id == material_id).sort(-PriceForecast.target_date).to_list())
 
     return {
         "success": True,
@@ -212,14 +210,11 @@ def get_smart_matches(
     current_user=Depends(get_current_user)
 ):
     """Feature 4: AI-powered smart matches with enhanced scoring and insights"""
-    material = db.query(Material).filter(Material.id == material_id).first()
+    material = _run(Material.find_one(Material.id == material_id))
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
 
-    matches = db.query(Match).filter(
-        Match.material_id == material_id,
-        Match.symbio_score >= min_score
-    ).order_by(Match.symbio_score.desc()).all()
+    matches = _run(Match.find(Match.material_id == material_id, Match.symbio_score >= min_score).sort(-Match.symbio_score).to_list())
 
     return {
         "success": True,
@@ -258,12 +253,12 @@ def get_anomaly_detections(
     current_user=Depends(get_current_user)
 ):
     """Feature 5: Platform-wide anomaly detection with prioritized alerts"""
-    q = db.query(AnomalyDetection)
+    q = AnomalyDetection.find_all()
     if severity:
-        q = q.filter(AnomalyDetection.severity == severity)
+        q = q.find(AnomalyDetection.severity == severity)
     if status:
-        q = q.filter(AnomalyDetection.status == status)
-    anomalies = q.order_by(AnomalyDetection.anomaly_score.desc()).limit(50).all()
+        q = q.find(AnomalyDetection.status == status)
+    anomalies = _run(q.sort(-AnomalyDetection.anomaly_score).limit(50).to_list())
 
     critical_count = sum(1 for a in anomalies if a.severity == "critical")
     high_count = sum(1 for a in anomalies if a.severity == "high")
@@ -301,9 +296,7 @@ def get_predictive_maintenance(
     current_user=Depends(get_current_user)
 ):
     """Feature 6: Equipment health monitoring and failure prediction"""
-    maintenance = db.query(PredictiveMaintenance).filter(
-        PredictiveMaintenance.factory_id == factory_id
-    ).order_by(PredictiveMaintenance.health_score.asc()).all()
+    maintenance = _run(PredictiveMaintenance.find(PredictiveMaintenance.factory_id == factory_id).sort(PredictiveMaintenance.health_score).to_list())
 
     urgent = [m for m in maintenance if m.risk_level in ("critical", "high")]
 
@@ -336,125 +329,3 @@ def get_predictive_maintenance(
         }
     }
 
-
-
-@router.post("/recommendations", response_model=AIRecommendationResponse)
-def create_recommendation(
-    recommendation: AIRecommendationCreate,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Create AI-powered recommendation"""
-    db_recommendation = AIRecommendation(**recommendation.dict(), user_id=current_user.id)
-    db.add(db_recommendation)
-    db.commit()
-    db.refresh(db_recommendation)
-    return db_recommendation
-
-
-@router.get("/recommendations", response_model=List[AIRecommendationResponse])
-def get_recommendations(
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Get user's AI recommendations"""
-    recommendations = db.query(AIRecommendation).filter(
-        AIRecommendation.user_id == current_user.id
-    ).offset(skip).limit(limit).all()
-    return recommendations
-
-
-@router.put("/recommendations/{recommendation_id}/status")
-def update_recommendation_status(
-    recommendation_id: str,
-    status: str,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Update recommendation status"""
-    recommendation = db.query(AIRecommendation).filter(
-        AIRecommendation.id == recommendation_id,
-        AIRecommendation.user_id == current_user.id
-    ).first()
-    if not recommendation:
-        raise HTTPException(status_code=404, detail="Recommendation not found")
-    
-    recommendation.status = status
-    db.commit()
-    return {"message": "Status updated successfully"}
-
-
-@router.post("/demand-predictions", response_model=DemandPredictionResponse)
-def create_demand_prediction(
-    prediction: DemandPredictionCreate,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Create demand prediction"""
-    db_prediction = DemandPrediction(**prediction.dict())
-    db.add(db_prediction)
-    db.commit()
-    db.refresh(db_prediction)
-    return db_prediction
-
-
-@router.get("/demand-predictions/{material_id}", response_model=List[DemandPredictionResponse])
-def get_demand_predictions(
-    material_id: str,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Get demand predictions for a material"""
-    predictions = db.query(DemandPrediction).filter(
-        DemandPrediction.material_id == material_id
-    ).order_by(DemandPrediction.prediction_date.desc()).all()
-    return predictions
-
-
-@router.post("/price-forecasts", response_model=PriceForecastResponse)
-def create_price_forecast(
-    forecast: PriceForecastCreate,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Create price forecast"""
-    db_forecast = PriceForecast(**forecast.dict())
-    db.add(db_forecast)
-    db.commit()
-    db.refresh(db_forecast)
-    return db_forecast
-
-
-@router.get("/price-forecasts/{material_id}", response_model=List[PriceForecastResponse])
-def get_price_forecasts(
-    material_id: str,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Get price forecasts for a material"""
-    forecasts = db.query(PriceForecast).filter(
-        PriceForecast.material_id == material_id
-    ).order_by(PriceForecast.target_date.desc()).all()
-    return forecasts
-
-
-@router.get("/smart-matches/{material_id}")
-def get_smart_matches(
-    material_id: str,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """Get AI-powered smart matches for materials"""
-    # This would integrate with the existing matching algorithm
-    # Enhanced with AI scoring and recommendations
-    return {
-        "material_id": material_id,
-        "matches": [],
-        "ai_insights": {
-            "best_match_probability": 0.85,
-            "recommended_partners": [],
-            "optimization_suggestions": []
-        }
-    }

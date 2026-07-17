@@ -1,13 +1,16 @@
+import asyncio
 from uuid import uuid4
-
-from sqlalchemy.orm import Session
 
 from app.models.notification import Notification
 from app.services.email_service import send_email, EmailNotConfigured
 
 
+def _run(coro):
+    return asyncio.run(coro)
+
+
 def create_notification(
-    db: Session,
+    db,
     user_id: str,
     category: str,
     title: str,
@@ -29,7 +32,5 @@ def create_notification(
             notification.delivered_email = True
         except EmailNotConfigured:
             notification.delivered_email = False
-    db.add(notification)
-    db.commit()
-    db.refresh(notification)
+    _run(notification.insert())
     return notification

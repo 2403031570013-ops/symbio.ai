@@ -1,7 +1,7 @@
+import asyncio
+from typing import Any, List
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import List
-from app.db.session import get_db
 from app.models.esg_sustainability import (
     CarbonFootprint, ESGScore, SustainabilityDashboard,
     WasteImpact, GreenCertification, CarbonCredit
@@ -15,6 +15,16 @@ from app.core.security import get_current_user
 
 router = APIRouter()
 
+Session = Any
+
+
+def get_db() -> None:
+    return None
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
 
 @router.post("/carbon-footprint", response_model=CarbonFootprintResponse)
 def create_carbon_footprint(
@@ -24,9 +34,7 @@ def create_carbon_footprint(
 ):
     """Record carbon footprint data"""
     db_footprint = CarbonFootprint(**footprint.dict())
-    db.add(db_footprint)
-    db.commit()
-    db.refresh(db_footprint)
+    _run(db_footprint.insert())
     return db_footprint
 
 
@@ -37,9 +45,7 @@ def get_carbon_footprints(
     current_user = Depends(get_current_user)
 ):
     """Get carbon footprint data for a factory"""
-    footprints = db.query(CarbonFootprint).filter(
-        CarbonFootprint.factory_id == factory_id
-    ).order_by(CarbonFootprint.period_start.desc()).all()
+    footprints = _run(CarbonFootprint.find(CarbonFootprint.factory_id == factory_id).sort(-CarbonFootprint.period_start).to_list())
     return footprints
 
 
@@ -51,9 +57,7 @@ def create_esg_score(
 ):
     """Create ESG score assessment"""
     db_score = ESGScore(**score.dict())
-    db.add(db_score)
-    db.commit()
-    db.refresh(db_score)
+    _run(db_score.insert())
     return db_score
 
 
@@ -64,9 +68,7 @@ def get_esg_score(
     current_user = Depends(get_current_user)
 ):
     """Get latest ESG score for a factory"""
-    score = db.query(ESGScore).filter(
-        ESGScore.factory_id == factory_id
-    ).order_by(ESGScore.assessment_date.desc()).first()
+    score = _run(ESGScore.find(ESGScore.factory_id == factory_id).sort(-ESGScore.assessment_date).first_or_none())
     if not score:
         raise HTTPException(status_code=404, detail="ESG score not found")
     return score
@@ -80,9 +82,7 @@ def create_sustainability_dashboard(
 ):
     """Create sustainability dashboard data"""
     db_dashboard = SustainabilityDashboard(**dashboard.dict())
-    db.add(db_dashboard)
-    db.commit()
-    db.refresh(db_dashboard)
+    _run(db_dashboard.insert())
     return db_dashboard
 
 
@@ -93,9 +93,7 @@ def get_sustainability_dashboard(
     current_user = Depends(get_current_user)
 ):
     """Get sustainability dashboard for a factory"""
-    dashboard = db.query(SustainabilityDashboard).filter(
-        SustainabilityDashboard.factory_id == factory_id
-    ).order_by(SustainabilityDashboard.period_end.desc()).first()
+    dashboard = _run(SustainabilityDashboard.find(SustainabilityDashboard.factory_id == factory_id).sort(-SustainabilityDashboard.period_end).first_or_none())
     if not dashboard:
         raise HTTPException(status_code=404, detail="Sustainability dashboard not found")
     return dashboard
@@ -108,9 +106,7 @@ def get_waste_impact(
     current_user = Depends(get_current_user)
 ):
     """Get waste impact analysis for a material"""
-    impact = db.query(WasteImpact).filter(
-        WasteImpact.material_id == material_id
-    ).first()
+    impact = _run(WasteImpact.find_one(WasteImpact.material_id == material_id))
     if not impact:
         raise HTTPException(status_code=404, detail="Waste impact data not found")
     return impact
@@ -123,9 +119,7 @@ def get_green_certifications(
     current_user = Depends(get_current_user)
 ):
     """Get green certifications for a factory"""
-    certifications = db.query(GreenCertification).filter(
-        GreenCertification.factory_id == factory_id
-    ).all()
+    certifications = _run(GreenCertification.find(GreenCertification.factory_id == factory_id).to_list())
     return certifications
 
 
@@ -136,7 +130,5 @@ def get_carbon_credits(
     current_user = Depends(get_current_user)
 ):
     """Get carbon credits for a factory"""
-    credits = db.query(CarbonCredit).filter(
-        CarbonCredit.factory_id == factory_id
-    ).all()
+    credits = _run(CarbonCredit.find(CarbonCredit.factory_id == factory_id).to_list())
     return credits

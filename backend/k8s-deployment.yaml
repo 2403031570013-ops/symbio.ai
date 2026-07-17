@@ -18,11 +18,11 @@ spec:
         ports:
         - containerPort: 8000
         env:
-        - name: DATABASE_URL
+        - name: MONGODB_URI
           valueFrom:
             secretKeyRef:
               name: symbioai-secrets
-              key: database-url
+              key: mongodb-uri
         - name: SECRET_KEY
           valueFrom:
             secretKeyRef:

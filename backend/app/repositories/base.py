@@ -1,16 +1,20 @@
-from typing import Generic, TypeVar
-from sqlalchemy.orm import Session
+import asyncio
+from typing import Generic, TypeVar, Any
 
 ModelType = TypeVar("ModelType")
 
 
+def _run(coro):
+    return asyncio.run(coro)
+
+
 class BaseRepository(Generic[ModelType]):
-    def __init__(self, model: type[ModelType], db: Session):
+    def __init__(self, model: type[ModelType], db: Any):
         self.model = model
         self.db = db
 
     def get_all(self):
-        return self.db.query(self.model).all()
+        return _run(self.model.find_all().to_list())
 
     def get_by_id(self, id: str):
-        return self.db.query(self.model).filter(self.model.id == id).first()
+        return _run(self.model.find_one(self.model.id == id))

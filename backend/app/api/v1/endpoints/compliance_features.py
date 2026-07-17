@@ -1,7 +1,7 @@
+import asyncio
+from typing import Any, List
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import List
-from app.db.session import get_db
 from app.models.compliance_risk import (
     ComplianceCheck, RiskAssessment, AuditTrail,
     DocumentCompliance, RegulatoryUpdate, FraudDetection
@@ -15,6 +15,16 @@ from app.core.security import get_current_user
 
 router = APIRouter()
 
+Session = Any
+
+
+def get_db() -> None:
+    return None
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
 
 @router.post("/compliance-check", response_model=ComplianceCheckResponse)
 def create_compliance_check(
@@ -24,9 +34,7 @@ def create_compliance_check(
 ):
     """Create compliance check"""
     db_check = ComplianceCheck(**check.dict())
-    db.add(db_check)
-    db.commit()
-    db.refresh(db_check)
+    _run(db_check.insert())
     return db_check
 
 
@@ -37,9 +45,7 @@ def get_compliance_checks(
     current_user = Depends(get_current_user)
 ):
     """Get compliance checks for a factory"""
-    checks = db.query(ComplianceCheck).filter(
-        ComplianceCheck.factory_id == factory_id
-    ).order_by(ComplianceCheck.created_at.desc()).all()
+    checks = _run(ComplianceCheck.find(ComplianceCheck.factory_id == factory_id).sort(-ComplianceCheck.created_at).to_list())
     return checks
 
 
@@ -51,9 +57,7 @@ def create_risk_assessment(
 ):
     """Create risk assessment"""
     db_assessment = RiskAssessment(**assessment.dict())
-    db.add(db_assessment)
-    db.commit()
-    db.refresh(db_assessment)
+    _run(db_assessment.insert())
     return db_assessment
 
 
@@ -64,9 +68,7 @@ def get_risk_assessments(
     current_user = Depends(get_current_user)
 ):
     """Get risk assessments for a factory"""
-    assessments = db.query(RiskAssessment).filter(
-        RiskAssessment.factory_id == factory_id
-    ).order_by(RiskAssessment.created_at.desc()).all()
+    assessments = _run(RiskAssessment.find(RiskAssessment.factory_id == factory_id).sort(-RiskAssessment.created_at).to_list())
     return assessments
 
 
@@ -78,10 +80,7 @@ def get_audit_trail(
     current_user = Depends(get_current_user)
 ):
     """Get audit trail for an entity"""
-    trail = db.query(AuditTrail).filter(
-        AuditTrail.entity_type == entity_type,
-        AuditTrail.entity_id == entity_id
-    ).order_by(AuditTrail.timestamp.desc()).all()
+    trail = _run(AuditTrail.find(AuditTrail.entity_type == entity_type, AuditTrail.entity_id == entity_id).sort(-AuditTrail.timestamp).to_list())
     return trail
 
 
@@ -93,9 +92,7 @@ def create_document_compliance(
 ):
     """Create document compliance record"""
     db_document = DocumentCompliance(**document.dict())
-    db.add(db_document)
-    db.commit()
-    db.refresh(db_document)
+    _run(db_document.insert())
     return db_document
 
 
@@ -106,9 +103,7 @@ def get_document_compliance(
     current_user = Depends(get_current_user)
 ):
     """Get document compliance for a factory"""
-    documents = db.query(DocumentCompliance).filter(
-        DocumentCompliance.factory_id == factory_id
-    ).all()
+    documents = _run(DocumentCompliance.find(DocumentCompliance.factory_id == factory_id).to_list())
     return documents
 
 
@@ -119,11 +114,10 @@ def get_regulatory_updates(
     current_user = Depends(get_current_user)
 ):
     """Get regulatory updates"""
-    query = db.query(RegulatoryUpdate)
+    query = _run(RegulatoryUpdate.find_all().to_list())
     if jurisdiction:
-        query = query.filter(RegulatoryUpdate.jurisdiction == jurisdiction)
-    updates = query.order_by(RegulatoryUpdate.created_at.desc()).all()
-    return updates
+        query = [item for item in query if item.jurisdiction == jurisdiction]
+    return sorted(query, key=lambda item: item.created_at, reverse=True)
 
 
 @router.get("/fraud-detections/{factory_id}")
@@ -133,8 +127,5 @@ def get_fraud_detections(
     current_user = Depends(get_current_user)
 ):
     """Get fraud detections for a factory"""
-    detections = db.query(FraudDetection).filter(
-        FraudDetection.entity_type == "factory",
-        FraudDetection.entity_id == factory_id
-    ).order_by(FraudDetection.created_at.desc()).all()
+    detections = _run(FraudDetection.find(FraudDetection.entity_type == "factory", FraudDetection.entity_id == factory_id).sort(-FraudDetection.created_at).to_list())
     return detections

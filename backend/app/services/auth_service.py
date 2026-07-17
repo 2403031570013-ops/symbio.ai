@@ -1,12 +1,15 @@
-from typing import Any
+import asyncio
 from uuid import uuid4
 
 from passlib.context import CryptContext
-from sqlalchemy.orm import Session
 
 from app.models.user import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _run(coro):
+    return asyncio.run(coro)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -17,7 +20,7 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def create_user(db: Session, *, email: str, full_name: str, password: str, role: str) -> User:
+def create_user(db, *, email: str, full_name: str, password: str, role: str) -> User:
     user = User(
         id=str(uuid4()),
         email=email,
@@ -25,7 +28,5 @@ def create_user(db: Session, *, email: str, full_name: str, password: str, role:
         hashed_password=get_password_hash(password),
         role=role,
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    _run(user.insert())
     return user

@@ -11,5 +11,5 @@ metadata:
   name: symbioai-secrets
 type: Opaque
 stringData:
-  database-url: "postgresql+psycopg://user:password@host:5432/symbioai"
+  mongodb-uri: "mongodb+srv://jainanik84_db_user:<YOUR_PASSWORD>@cluster0.nod8nma.mongodb.net/symbioai?retryWrites=true&w=majority&appName=Cluster0"
   secret-key: "change-me-in-production"

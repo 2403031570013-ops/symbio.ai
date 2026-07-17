@@ -1,11 +1,10 @@
+import asyncio
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints.auth import get_current_user
-from app.db.session import SessionLocal
 from app.models.storage import StoredObject
 from app.models.user import User
 from app.schemas.common import SuccessResponse
@@ -13,13 +12,15 @@ from app.services.storage_service import StorageNotConfigured, create_presigned_
 
 router = APIRouter()
 
+Session = Any
 
-def get_db() -> Session:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
+def get_db() -> None:
+    return None
+
+
+def _run(coro):
+    return asyncio.run(coro)
 
 
 @router.post("/presign", response_model=SuccessResponse)
@@ -44,14 +45,13 @@ def presign_upload(payload: dict, db: Session = Depends(get_db), current_user: U
         original_name=filename,
         provider="s3",
     )
-    db.add(stored)
-    db.commit()
+    _run(stored.insert())
     return {"success": True, "message": "Upload URL created", "data": {"upload": {**signed, "id": stored.id}}}
 
 
 @router.get("/objects", response_model=SuccessResponse)
 def list_objects(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    objects = db.query(StoredObject).filter(StoredObject.owner_id == current_user.id).order_by(StoredObject.created_at.desc()).all()
+    objects = _run(StoredObject.find(StoredObject.owner_id == current_user.id).sort(-StoredObject.created_at).to_list())
     return {
         "success": True,
         "message": "Objects loaded",

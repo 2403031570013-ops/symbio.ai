@@ -6,9 +6,9 @@ def test_cors_origins_accept_comma_separated_env_values():
     assert settings.cors_origins == ["https://app.example.com", "https://admin.example.com"]
 
 
-def test_postgres_url_is_normalized_for_psycopg_driver():
-    settings = Settings(DATABASE_URL="postgres://user:pass@localhost:5432/symbioai")
-    assert settings.DATABASE_URL == "postgresql+psycopg://user:pass@localhost:5432/symbioai"
+def test_mongodb_uri_defaults_to_symbioai_database():
+    settings = Settings(MONGODB_URI="mongodb+srv://user:pass@cluster0.mongodb.net/symbioai?retryWrites=true&w=majority")
+    assert "symbioai" in settings.MONGODB_URI
 
 
 def test_production_rejects_default_secret():

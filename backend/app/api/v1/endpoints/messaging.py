@@ -1,13 +1,11 @@
 from datetime import datetime, timezone
 from typing import Any
+import asyncio
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from sqlalchemy import desc
-from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints.auth import get_current_user
-from app.db.session import SessionLocal
 from app.models.messaging import Conversation, Message
 from app.models.user import User
 from app.schemas.common import SuccessResponse
@@ -17,13 +15,15 @@ from app.services.realtime import realtime_manager
 
 router = APIRouter()
 
+Session = Any
 
-def get_db() -> Session:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
+def get_db() -> None:
+    return None
+
+
+def _run(coro):
+    return asyncio.run(coro)
 
 
 def serialize_conversation(conversation: Conversation) -> dict:
@@ -60,12 +60,7 @@ def serialize_message(message: Message) -> dict:
 
 @router.get("/conversations", response_model=SuccessResponse)
 def list_conversations(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    conversations = (
-        db.query(Conversation)
-        .filter(Conversation.seller_id == current_user.id)
-        .order_by(desc(Conversation.last_message_at))
-        .all()
-    )
+    conversations = _run(Conversation.find(Conversation.seller_id == current_user.id).sort(-Conversation.last_message_at).to_list())
     return {"success": True, "message": "Conversations loaded", "data": {"conversations": [serialize_conversation(item) for item in conversations]}}
 
 
@@ -83,11 +78,7 @@ def create_conversation(payload: dict, db: Session = Depends(get_db), current_us
 
     conversation = None
     if match_id:
-        conversation = (
-            db.query(Conversation)
-            .filter(Conversation.match_id == match_id, Conversation.seller_id == current_user.id)
-            .first()
-        )
+        conversation = _run(Conversation.find_one(Conversation.match_id == match_id, Conversation.seller_id == current_user.id))
 
     if not conversation:
         conversation = Conversation(
@@ -100,8 +91,7 @@ def create_conversation(payload: dict, db: Session = Depends(get_db), current_us
             unread_count=0,
             last_message_at=datetime.now(timezone.utc),
         )
-        db.add(conversation)
-        db.flush()
+        _run(conversation.insert())
 
     message = Message(
         id=str(uuid4()),
@@ -113,12 +103,9 @@ def create_conversation(payload: dict, db: Session = Depends(get_db), current_us
         is_read=True,
     )
     conversation.last_message_at = datetime.now(timezone.utc)
-    db.add(message)
-    db.commit()
-    db.refresh(conversation)
-    db.refresh(message)
+    _run(message.insert())
+    _run(conversation.save())
     create_notification(
-        db,
         current_user.id,
         "message",
         f"Conversation opened with {partner_name}",
@@ -135,21 +122,22 @@ def create_conversation(payload: dict, db: Session = Depends(get_db), current_us
 
 @router.get("/conversations/{conversation_id}/messages", response_model=SuccessResponse)
 def list_messages(conversation_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    conversation = db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.seller_id == current_user.id).first()
+    conversation = _run(Conversation.find_one(Conversation.id == conversation_id, Conversation.seller_id == current_user.id))
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    messages = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at).all()
+    messages = _run(Message.find(Message.conversation_id == conversation_id).sort(Message.created_at).to_list())
     conversation.unread_count = 0
     for message in messages:
         message.is_read = True
-    db.commit()
+        _run(message.save())
+    _run(conversation.save())
     return {"success": True, "message": "Messages loaded", "data": {"messages": [serialize_message(item) for item in messages]}}
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=SuccessResponse)
 async def send_message(conversation_id: str, payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    conversation = db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.seller_id == current_user.id).first()
+    conversation = _run(Conversation.find_one(Conversation.id == conversation_id, Conversation.seller_id == current_user.id))
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -172,10 +160,9 @@ async def send_message(conversation_id: str, payload: dict, db: Session = Depend
         is_read=True,
     )
     conversation.last_message_at = datetime.now(timezone.utc)
-    db.add(message)
-    db.commit()
-    db.refresh(message)
-    notification = create_notification(db, current_user.id, "message", f"New message in {conversation.partner_name}", body, action_url="/matches")
+    _run(message.insert())
+    _run(conversation.save())
+    notification = create_notification(current_user.id, "message", f"New message in {conversation.partner_name}", body, action_url="/matches")
     await realtime_manager.send_user(current_user.id, {"type": "message", "conversation_id": conversation.id, "message": serialize_message(message)})
     await realtime_manager.send_user(current_user.id, {"type": "notification", "notification": {"id": notification.id, "title": notification.title, "message": notification.message}})
     return {"success": True, "message": "Message sent", "data": {"message": serialize_message(message)}}
@@ -183,7 +170,7 @@ async def send_message(conversation_id: str, payload: dict, db: Session = Depend
 
 @router.put("/conversations/{conversation_id}/offer", response_model=SuccessResponse)
 async def update_offer(conversation_id: str, payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    conversation = db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.seller_id == current_user.id).first()
+    conversation = _run(Conversation.find_one(Conversation.id == conversation_id, Conversation.seller_id == current_user.id))
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -204,20 +191,17 @@ async def update_offer(conversation_id: str, payload: dict, db: Session = Depend
     )
     conversation.status = "offer_" + status
     conversation.last_message_at = datetime.now(timezone.utc)
-    db.add(message)
-    db.commit()
-    db.refresh(message)
+    _run(message.insert())
+    _run(conversation.save())
     await realtime_manager.send_user(current_user.id, {"type": "offer", "conversation_id": conversation.id, "message": serialize_message(message), "status": status})
     return {"success": True, "message": f"Offer {status}", "data": {"message": serialize_message(message), "conversation": serialize_conversation(conversation)}}
 
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str):
-    db = SessionLocal()
-    user = get_user_from_token(token, db)
+    user = await get_user_from_token(token)
     if not user:
         await websocket.close(code=1008)
-        db.close()
         return
 
     await realtime_manager.connect(user.id, websocket)
@@ -229,5 +213,3 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                 await realtime_manager.send_user(user.id, {**payload, "user_id": user.id})
     except WebSocketDisconnect:
         realtime_manager.disconnect(user.id, websocket)
-    finally:
-        db.close()

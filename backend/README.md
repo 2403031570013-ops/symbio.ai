@@ -11,10 +11,7 @@
    ```bash
    copy .env.example .env
    ```
-4. Start PostgreSQL or use Docker:
-   ```bash
-   docker compose up -d db
-   ```
+4. Set `MONGODB_URI` in your `.env` file.
 5. Run the API:
    ```bash
    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

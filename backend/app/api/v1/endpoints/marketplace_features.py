@@ -1,7 +1,7 @@
+import asyncio
+from typing import Any, List
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import List
-from app.db.session import get_db
 from app.models.marketplace_operations import (
     DynamicPricing, SmartNotification, WorkflowAutomation,
     Contract, Payment, BusinessIntelligence, AnomalyDetection, PredictiveMaintenance
@@ -17,6 +17,16 @@ from app.core.security import get_current_user
 
 router = APIRouter()
 
+Session = Any
+
+
+def get_db() -> None:
+    return None
+
+
+def _run(coro):
+    return asyncio.run(coro)
+
 
 @router.post("/dynamic-pricing", response_model=DynamicPricingResponse)
 def create_dynamic_pricing(
@@ -26,9 +36,7 @@ def create_dynamic_pricing(
 ):
     """Create dynamic pricing"""
     db_pricing = DynamicPricing(**pricing.dict())
-    db.add(db_pricing)
-    db.commit()
-    db.refresh(db_pricing)
+    _run(db_pricing.insert())
     return db_pricing
 
 
@@ -39,9 +47,7 @@ def get_dynamic_pricing(
     current_user = Depends(get_current_user)
 ):
     """Get dynamic pricing for a material"""
-    pricing = db.query(DynamicPricing).filter(
-        DynamicPricing.material_id == material_id
-    ).order_by(DynamicPricing.created_at.desc()).all()
+    pricing = _run(DynamicPricing.find(DynamicPricing.material_id == material_id).sort(-DynamicPricing.created_at).to_list())
     return pricing
 
 
@@ -53,9 +59,7 @@ def create_smart_notification(
 ):
     """Create smart notification"""
     db_notification = SmartNotification(**notification.dict(), user_id=current_user.id)
-    db.add(db_notification)
-    db.commit()
-    db.refresh(db_notification)
+    _run(db_notification.insert())
     return db_notification
 
 
@@ -67,9 +71,7 @@ def get_smart_notifications(
     current_user = Depends(get_current_user)
 ):
     """Get user's smart notifications"""
-    notifications = db.query(SmartNotification).filter(
-        SmartNotification.user_id == current_user.id
-    ).order_by(SmartNotification.created_at.desc()).offset(skip).limit(limit).all()
+    notifications = _run(SmartNotification.find(SmartNotification.user_id == current_user.id).sort(-SmartNotification.created_at).skip(skip).limit(limit).to_list())
     return notifications
 
 
@@ -80,15 +82,12 @@ def mark_notification_read(
     current_user = Depends(get_current_user)
 ):
     """Mark notification as read"""
-    notification = db.query(SmartNotification).filter(
-        SmartNotification.id == notification_id,
-        SmartNotification.user_id == current_user.id
-    ).first()
+    notification = _run(SmartNotification.find_one(SmartNotification.id == notification_id, SmartNotification.user_id == current_user.id))
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
     
     notification.status = "read"
-    db.commit()
+    _run(notification.save())
     return {"message": "Notification marked as read"}
 
 
@@ -100,9 +99,7 @@ def create_workflow_automation(
 ):
     """Create workflow automation"""
     db_automation = WorkflowAutomation(**automation.dict(), created_by=current_user.id)
-    db.add(db_automation)
-    db.commit()
-    db.refresh(db_automation)
+    _run(db_automation.insert())
     return db_automation
 
 
@@ -112,9 +109,7 @@ def get_workflow_automations(
     current_user = Depends(get_current_user)
 ):
     """Get workflow automations"""
-    automations = db.query(WorkflowAutomation).filter(
-        WorkflowAutomation.created_by == current_user.id
-    ).all()
+    automations = _run(WorkflowAutomation.find(WorkflowAutomation.created_by == current_user.id).to_list())
     return automations
 
 
@@ -126,9 +121,7 @@ def create_contract(
 ):
     """Create contract"""
     db_contract = Contract(**contract.dict())
-    db.add(db_contract)
-    db.commit()
-    db.refresh(db_contract)
+    _run(db_contract.insert())
     return db_contract
 
 
@@ -139,9 +132,7 @@ def get_contracts(
     current_user = Depends(get_current_user)
 ):
     """Get contracts for a factory"""
-    contracts = db.query(Contract).filter(
-        Contract.party_a_id == factory_id
-    ).order_by(Contract.created_at.desc()).all()
+    contracts = _run(Contract.find(Contract.party_a_id == factory_id).sort(-Contract.created_at).to_list())
     return contracts
 
 
@@ -153,9 +144,7 @@ def create_payment(
 ):
     """Create payment"""
     db_payment = Payment(**payment.dict())
-    db.add(db_payment)
-    db.commit()
-    db.refresh(db_payment)
+    _run(db_payment.insert())
     return db_payment
 
 
@@ -166,9 +155,7 @@ def get_payments(
     current_user = Depends(get_current_user)
 ):
     """Get payments for a factory"""
-    payments = db.query(Payment).filter(
-        (Payment.paid_by == factory_id) | (Payment.paid_to == factory_id)
-    ).order_by(Payment.created_at.desc()).all()
+    payments = _run(Payment.find((Payment.paid_by == factory_id) | (Payment.paid_to == factory_id)).sort(-Payment.created_at).to_list())
     return payments
 
 
@@ -180,9 +167,7 @@ def get_business_intelligence(
     current_user = Depends(get_current_user)
 ):
     """Get business intelligence reports"""
-    reports = db.query(BusinessIntelligence).filter(
-        BusinessIntelligence.report_type == report_type
-    ).order_by(BusinessIntelligence.created_at.desc()).limit(10).all()
+    reports = _run(BusinessIntelligence.find(BusinessIntelligence.report_type == report_type).sort(-BusinessIntelligence.created_at).limit(10).to_list())
     return reports
 
 
@@ -193,9 +178,7 @@ def get_anomaly_detections(
     current_user = Depends(get_current_user)
 ):
     """Get anomaly detections for a factory"""
-    detections = db.query(AnomalyDetection).filter(
-        AnomalyDetection.entity_id == factory_id
-    ).order_by(AnomalyDetection.created_at.desc()).all()
+    detections = _run(AnomalyDetection.find(AnomalyDetection.entity_id == factory_id).sort(-AnomalyDetection.created_at).to_list())
     return detections
 
 
@@ -206,7 +189,5 @@ def get_predictive_maintenance(
     current_user = Depends(get_current_user)
 ):
     """Get predictive maintenance data for a factory"""
-    maintenance = db.query(PredictiveMaintenance).filter(
-        PredictiveMaintenance.factory_id == factory_id
-    ).order_by(PredictiveMaintenance.updated_at.desc()).all()
+    maintenance = _run(PredictiveMaintenance.find(PredictiveMaintenance.factory_id == factory_id).sort(-PredictiveMaintenance.updated_at).to_list())
     return maintenance

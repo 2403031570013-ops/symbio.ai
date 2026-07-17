@@ -21,7 +21,7 @@
 
 ## Database and storage
 
-- PostgreSQL is the target production database.
+- MongoDB Atlas is the target production database.
 - AWS S3 compatible storage should be configured through environment variables for uploads.
 - Redis should be used for cache invalidation and background task coordination.
 

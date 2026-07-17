@@ -7,13 +7,11 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
 
 from app.api.v1.endpoints.auth import get_password_hash
 from app.core.config import settings
 from app.core.security import get_current_user
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, desc, func, or_
 from app.models.analytics import Analytics
 from app.models.auth import RefreshToken
 from app.models.compliance_risk import AuditTrail, DocumentCompliance
@@ -29,6 +27,7 @@ from app.schemas.common import SuccessResponse
 from app.services.notification_service import create_notification
 
 router = APIRouter()
+Session = Any
 
 ADMIN_ROLES = {UserRole.ADMIN, UserRole.SUPER_ADMIN}
 AI_SETTINGS = {"confidence_threshold": 80}
@@ -105,13 +104,18 @@ def listing_payload(item: Material) -> dict:
 def admin_dashboard(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
     require_admin(current_user)
     analytics = db.query(Analytics).first()
-    revenue = db.query(func.coalesce(func.sum(Transaction.amount), 0)).scalar() or 0
+    transactions = db.query(Transaction).all()
+    materials = db.query(Material).all()
+    users = db.query(User).all()
+    revenue = sum(float(item.amount or 0) for item in transactions)
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).replace(tzinfo=None)
     seven_days_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
-    storage_bytes = db.query(func.count(StoredObject.id)).scalar() or 0
-    listing_statuses = dict(db.query(Material.status, func.count(Material.id)).group_by(Material.status).all())
-    active_users = db.query(User).filter(User.is_active.is_(True)).count()
-    successful_matches = db.query(Match).filter(Match.symbio_score >= AI_SETTINGS["confidence_threshold"]).count()
+    storage_bytes = len(db.query(StoredObject).all())
+    listing_statuses: dict[str, int] = {}
+    for item in materials:
+        listing_statuses[item.status] = listing_statuses.get(item.status, 0) + 1
+    active_users = len([user for user in users if user.is_active])
+    successful_matches = len([match for match in db.query(Match).all() if match.symbio_score >= AI_SETTINGS["confidence_threshold"]])
     recent_activity = db.query(AuditTrail).order_by(AuditTrail.timestamp.desc()).limit(8).all()
     recent_logins = db.query(AuditTrail).filter(AuditTrail.action == "admin_login").order_by(AuditTrail.timestamp.desc()).limit(6).all()
     return {
@@ -119,30 +123,30 @@ def admin_dashboard(db: Session = Depends(get_db), current_user: User = Depends(
         "message": "Admin dashboard loaded",
         "data": {
             "stats": {
-                "total_users": db.query(User).count(),
-                "users": db.query(User).count(),
+                "total_users": len(users),
+                "users": len(users),
                 "active_users": active_users,
-                "new_registrations": db.query(User).filter(User.created_at >= seven_days_ago).count(),
+                "new_registrations": len([user for user in users if user.created_at and user.created_at >= seven_days_ago]),
                 "pending_listings": listing_statuses.get("pending", 0),
                 "approved_listings": listing_statuses.get("approved", 0),
                 "rejected_listings": listing_statuses.get("rejected", 0),
-                "listings": db.query(Material).count(),
-                "pending_ai_matches": db.query(Match).filter(Match.symbio_score < AI_SETTINGS["confidence_threshold"]).count(),
+                "listings": len(materials),
+                "pending_ai_matches": len([match for match in db.query(Match).all() if match.symbio_score < AI_SETTINGS["confidence_threshold"]]),
                 "successful_matches": successful_matches,
-                "matches": db.query(Match).count(),
+                "matches": len(db.query(Match).all()),
                 "marketplace_revenue": float(revenue),
                 "revenue": float(revenue),
                 "carbon_saved": float(getattr(analytics, "co2_avoided", 0) or 0),
-                "transactions_today": db.query(Transaction).filter(Transaction.created_at >= today).count(),
+                "transactions_today": len([item for item in transactions if item.created_at and item.created_at >= today]),
                 "storage_usage": storage_bytes,
                 "server_status": "healthy",
                 "database_status": "healthy",
                 "api_health": "operational",
             },
             "charts": {
-                "users_by_role": [{"label": role.value, "value": db.query(User).filter(User.role == role).count()} for role in UserRole],
+                "users_by_role": [{"label": role.value, "value": len([user for user in users if user.role == role])} for role in UserRole],
                 "listings_by_status": [{"label": key or "unknown", "value": value} for key, value in listing_statuses.items()],
-                "revenue_heatmap": [{"label": item.partner_name, "value": float(item.amount)} for item in db.query(Transaction).order_by(Transaction.amount.desc()).limit(8).all()],
+                "revenue_heatmap": [{"label": item.partner_name, "value": float(item.amount)} for item in sorted(transactions, key=lambda item: item.amount or 0, reverse=True)[:8]],
             },
             "recent_activities": [{"action": item.action, "entity": item.entity_type, "actor_role": item.user_role, "at": item.timestamp.isoformat() if item.timestamp else None} for item in recent_activity],
             "recent_logins": [{"actor": item.user_id, "at": item.timestamp.isoformat() if item.timestamp else None, "ip": item.ip_address} for item in recent_logins],
@@ -153,7 +157,6 @@ def admin_dashboard(db: Session = Depends(get_db), current_user: User = Depends(
             ],
         },
     }
-
 
 @router.get("/users", response_model=SuccessResponse)
 def list_users(q: str = "", role: str = "", status: str = "", db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
@@ -168,9 +171,9 @@ def list_users(q: str = "", role: str = "", status: str = "", db: Session = Depe
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid role")
     if status == "active":
-        query = query.filter(User.is_active.is_(True))
+        query = query.filter(User.is_active == True)
     if status == "suspended":
-        query = query.filter(User.is_active.is_(False))
+        query = query.filter(User.is_active == False)
     users = query.order_by(User.created_at.desc()).all()
     return {"success": True, "message": "Users loaded", "data": {"users": [user_payload(user) for user in users]}}
 
@@ -538,7 +541,7 @@ def system_health(db: Session = Depends(get_db), current_user: User = Depends(ge
             "storage": {"status": "configured" if settings.S3_BUCKET else "missing_credentials", "provider": "s3-compatible"},
             "email": {"status": "configured" if settings.SMTP_HOST else "missing_credentials"},
             "security": {"status": "hardened", "rbac": True, "rate_limiting": True},
-            "sessions": {"active_estimate": db.query(User).filter(User.is_active.is_(True)).count()},
+            "sessions": {"active_estimate": db.query(User).filter(User.is_active == True).count()},
         },
     }
 
@@ -558,7 +561,7 @@ def broadcast_notification(payload: dict, request: Request, db: Session = Depend
     message = str(payload.get("message") or "").strip()
     if not title or not message:
         raise HTTPException(status_code=400, detail="Title and message are required")
-    users = db.query(User).filter(User.is_active.is_(True)).all()
+    users = db.query(User).filter(User.is_active == True).all()
     for user in users:
         create_notification(db, user.id, "admin_notice", title, message)
     audit(db, request, current_user, "notification", "broadcast", "broadcast", {"recipients": len(users), "title": title})

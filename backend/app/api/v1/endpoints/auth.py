@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import hashlib
 import hmac
 import io
@@ -13,10 +14,9 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from jose import jwt
 import pyotp
 import qrcode
-from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.session import SessionLocal
+from app.db.session import get_database
 from app.models.auth import EmailOtp, MobileOtp, RefreshToken, build_refresh_token_expiry
 from app.models.compliance_risk import AuditTrail
 from app.models.user import User, UserRole
@@ -41,6 +41,15 @@ except Exception:  # pragma: no cover
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+Session = Any
+
+
+def get_db() -> None:
+    return None
+
+
+def _run(coro):
+    return asyncio.run(coro)
 
 
 def _hash_password(password: str) -> str:
@@ -63,14 +72,6 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 @router.get("/health-check")
 def health_check() -> dict:
     return {"success": True, "message": "ok"}
-
-
-def get_db() -> Session:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -103,7 +104,7 @@ def _now_utc_naive() -> datetime:
 
 
 def _as_utc_naive(value: datetime) -> datetime:
-    """Normalize SQLite and PostgreSQL datetimes before comparing them."""
+    """Normalize datetimes before comparing them."""
     return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
 
 
@@ -112,7 +113,7 @@ def _otp_digest(otp: str) -> str:
     return hmac.new(settings.SECRET_KEY.encode(), otp.encode(), hashlib.sha256).hexdigest()
 
 
-def _issue_refresh_token(db: Session, user: User) -> str:
+async def _issue_refresh_token(user: User) -> str:
     token = secrets.token_urlsafe(48)
     rt = RefreshToken(
         id=str(uuid4()),
@@ -121,8 +122,7 @@ def _issue_refresh_token(db: Session, user: User) -> str:
         expires_at=build_refresh_token_expiry(settings.REFRESH_TOKEN_EXPIRE_DAYS).replace(tzinfo=None),
         revoked=False,
     )
-    db.add(rt)
-    db.commit()
+    await rt.insert()
     return token
 
 
@@ -145,7 +145,7 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 
 @router.post("/register", response_model=SuccessResponse)
 def register(user_in: UserCreate, response: Response, db: Session = Depends(get_db)) -> Any:
-    existing = db.query(User).filter(User.email == user_in.email).first()
+    existing = _run(User.find_one(User.email == user_in.email))
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     if user_in.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
@@ -162,9 +162,7 @@ def register(user_in: UserCreate, response: Response, db: Session = Depends(get_
         email_verified=False,
         mobile_verified=False,
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    _run(user.insert())
     logger.info("Registered user %s", user.email)
     try:
         send_welcome_email(user.email, user.full_name)
@@ -182,7 +180,7 @@ def register(user_in: UserCreate, response: Response, db: Session = Depends(get_
 def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
     """Issue a rate-limited, five-minute verification OTP through Resend."""
     email = str(payload.email).strip().lower()
-    user = db.query(User).filter(User.email == email).first()
+    user = _run(User.find_one(User.email == email))
     if not user:
         # Do not turn this endpoint into an account-enumeration oracle.
         return {"success": True, "message": "If the account exists, a verification code has been sent.", "data": {"cooldown_seconds": 60}}
@@ -190,22 +188,13 @@ def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
         return {"success": True, "message": "Email is already verified.", "data": {"verified": True}}
 
     now = _now_utc_naive()
-    latest = (
-        db.query(EmailOtp)
-        .filter(EmailOtp.email == email)
-        .order_by(EmailOtp.created_at.desc())
-        .first()
-    )
+    latest = _run(EmailOtp.find(EmailOtp.email == email).sort(-EmailOtp.created_at).first_or_none())
     latest_created_at = _as_utc_naive(latest.created_at) if latest and latest.created_at else None
     if latest_created_at and (now - latest_created_at).total_seconds() < 60:
         remaining = max(1, 60 - int((now - latest_created_at).total_seconds()))
         raise HTTPException(status_code=429, detail=f"Please wait {remaining} seconds before requesting another code")
 
-    request_count = (
-        db.query(EmailOtp)
-        .filter(EmailOtp.email == email, EmailOtp.created_at >= now - timedelta(hours=1))
-        .count()
-    )
+    request_count = _run(EmailOtp.find(EmailOtp.email == email, EmailOtp.created_at >= now - timedelta(hours=1)).count())
     if request_count >= 5:
         raise HTTPException(status_code=429, detail="Verification request limit reached. Try again in one hour.")
 
@@ -216,20 +205,16 @@ def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
         otp_hash=_otp_digest(otp),
         expires_at=now + timedelta(minutes=5),
     )
-    db.add(challenge)
     try:
         # Commit only after the provider accepts the email; failed sends do not consume a quota slot.
         send_resend_verification_otp(email, otp)
-        db.commit()
+        _run(challenge.insert())
     except EmailNotConfigured:
-        db.rollback()
         logger.error("OTP requested but Resend is not configured")
         raise HTTPException(status_code=503, detail="Email verification is temporarily unavailable")
     except EmailDeliveryError:
-        db.rollback()
         raise HTTPException(status_code=502, detail="Unable to send verification email. Please try again.")
     except Exception:
-        db.rollback()
         logger.exception("Unexpected failure while issuing email OTP")
         raise HTTPException(status_code=500, detail="Unable to create verification code")
 
@@ -246,30 +231,23 @@ def verify_otp(payload: OtpVerification, db: Session = Depends(get_db)) -> Any:
         raise HTTPException(status_code=400, detail="OTP must be a 6-digit code")
 
     now = _now_utc_naive()
-    challenge = (
-        db.query(EmailOtp)
-        .filter(EmailOtp.email == email, EmailOtp.used_at.is_(None))
-        .order_by(EmailOtp.created_at.desc())
-        .first()
-    )
+    challenge = _run(EmailOtp.find(EmailOtp.email == email, EmailOtp.used_at == None).sort(-EmailOtp.created_at).first_or_none())
     if not challenge or _as_utc_naive(challenge.expires_at) <= now:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
     if not hmac.compare_digest(challenge.otp_hash, _otp_digest(otp)):
         logger.warning("Invalid email OTP submitted for %s", email)
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
-    user = db.query(User).filter(User.email == email).first()
+    user = _run(User.find_one(User.email == email))
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
     challenge.used_at = now
     user.email_verified = True
     user.email_verification_token = None
-    db.commit()
+    _run(challenge.save())
+    _run(user.save())
     logger.info("Email verified with OTP for %s", email)
     return {"success": True, "message": "Email verified successfully.", "data": {"verified": True}}
-
-
-@router.post("/login", response_model=SuccessResponse)
 
 
 @router.post("/verify-factory", response_model=SuccessResponse)
@@ -292,7 +270,7 @@ def verify_factory(payload: FactoryVerification, db: Session = Depends(get_db)) 
 @router.post("/send-mobile-otp", response_model=SuccessResponse, responses={429: {"model": ErrorResponse}})
 def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_db)) -> Any:
     """Issue a rate-limited mobile phone verification OTP."""
-    user = db.query(User).filter(User.id == payload.user_id).first()
+    user = _run(User.find_one(User.id == payload.user_id))
     if not user:
         return {"success": True, "message": "If the account exists, a verification code has been sent.", "data": {"cooldown_seconds": 60}}
     
@@ -304,22 +282,13 @@ def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_db)) ->
         return {"success": True, "message": "Phone is already verified.", "data": {"verified": True}}
     
     now = _now_utc_naive()
-    latest = (
-        db.query(MobileOtp)
-        .filter(MobileOtp.user_id == payload.user_id, MobileOtp.phone_number == phone_number)
-        .order_by(MobileOtp.created_at.desc())
-        .first()
-    )
+    latest = _run(MobileOtp.find(MobileOtp.user_id == payload.user_id, MobileOtp.phone_number == phone_number).sort(-MobileOtp.created_at).first_or_none())
     latest_created_at = _as_utc_naive(latest.created_at) if latest and latest.created_at else None
     if latest_created_at and (now - latest_created_at).total_seconds() < 60:
         remaining = max(1, 60 - int((now - latest_created_at).total_seconds()))
         raise HTTPException(status_code=429, detail=f"Please wait {remaining} seconds before requesting another code")
     
-    request_count = (
-        db.query(MobileOtp)
-        .filter(MobileOtp.user_id == payload.user_id, MobileOtp.created_at >= now - timedelta(hours=1))
-        .count()
-    )
+    request_count = _run(MobileOtp.find(MobileOtp.user_id == payload.user_id, MobileOtp.created_at >= now - timedelta(hours=1)).count())
     if request_count >= 5:
         raise HTTPException(status_code=429, detail="Verification request limit reached. Try again in one hour.")
     
@@ -331,15 +300,14 @@ def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_db)) ->
         otp_hash=_otp_digest(otp),
         expires_at=now + timedelta(minutes=5),
     )
-    db.add(mobile_challenge)
-    db.commit()
+    _run(mobile_challenge.insert())
     
     # In a real implementation, you would send SMS here
     # For now, log the OTP for testing
     logger.info("Mobile verification OTP issued for user %s: %s", payload.user_id, otp)
     
     user.phone_number = phone_number
-    db.commit()
+    _run(user.save())
     
     return {"success": True, "message": "Verification code sent. It expires in 5 minutes.", "data": {"cooldown_seconds": 60, "expires_in_seconds": 300}}
 
@@ -351,17 +319,12 @@ def verify_mobile(payload: MobileOtpVerification, db: Session = Depends(get_db))
     if len(otp) != 6 or not otp.isdigit():
         raise HTTPException(status_code=400, detail="OTP must be a 6-digit code")
     
-    user = db.query(User).filter(User.id == payload.user_id).first()
+    user = _run(User.find_one(User.id == payload.user_id))
     if not user:
         raise HTTPException(status_code=400, detail="User not found")
     
     now = _now_utc_naive()
-    challenge = (
-        db.query(MobileOtp)
-        .filter(MobileOtp.user_id == payload.user_id, MobileOtp.used_at.is_(None))
-        .order_by(MobileOtp.created_at.desc())
-        .first()
-    )
+    challenge = _run(MobileOtp.find(MobileOtp.user_id == payload.user_id, MobileOtp.used_at == None).sort(-MobileOtp.created_at).first_or_none())
     
     if not challenge or _as_utc_naive(challenge.expires_at) <= now:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
@@ -372,7 +335,8 @@ def verify_mobile(payload: MobileOtpVerification, db: Session = Depends(get_db))
     
     challenge.used_at = now
     user.mobile_verified = True
-    db.commit()
+    _run(challenge.save())
+    _run(user.save())
     
     logger.info("Mobile verified with OTP for user %s", payload.user_id)
     return {"success": True, "message": "Mobile verified successfully.", "data": {"verified": True}}
@@ -380,12 +344,12 @@ def verify_mobile(payload: MobileOtpVerification, db: Session = Depends(get_db))
 
 @router.post("/login", response_model=SuccessResponse)
 def login(user_in: UserLogin, response: Response, db: Session = Depends(get_db)) -> Any:
-    user = db.query(User).filter(User.email == user_in.email).first()
+    user = _run(User.find_one(User.email == user_in.email))
     if not user or not verify_password(user_in.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token(user.email)
-    refresh_token = _issue_refresh_token(db, user)
+    refresh_token = _issue_refresh_token(user)
     _set_refresh_cookie(response, refresh_token)
     logger.info("Authenticated user %s", user.email)
     return {
@@ -397,7 +361,7 @@ def login(user_in: UserLogin, response: Response, db: Session = Depends(get_db))
 
 @router.post("/admin-login", response_model=SuccessResponse)
 def admin_login(user_in: UserLogin, response: Response, request: Request = None, db: Session = Depends(get_db)) -> Any:
-    user = db.query(User).filter(User.email == user_in.email).first()
+    user = _run(User.find_one(User.email == user_in.email))
     if not user or not verify_password(user_in.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid admin credentials")
     if user.role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
@@ -407,9 +371,9 @@ def admin_login(user_in: UserLogin, response: Response, request: Request = None,
         raise HTTPException(status_code=202, detail={"two_factor_required": True, "email": user.email})
 
     token = create_access_token(user.email)
-    refresh_token = _issue_refresh_token(db, user)
+    refresh_token = _issue_refresh_token(user)
     _set_refresh_cookie(response, refresh_token)
-    db.add(AuditTrail(
+    _run(AuditTrail(
         id=str(uuid4()),
         entity_type="admin_session",
         entity_id=user.id,
@@ -418,8 +382,7 @@ def admin_login(user_in: UserLogin, response: Response, request: Request = None,
         user_role=user.role.value,
         ip_address=request.client.host if request and request.client else None,
         changes={},
-    ))
-    db.commit()
+    ).insert())
     logger.info("Authenticated admin %s", user.email)
     return {
         "success": True,
@@ -454,11 +417,10 @@ def google_login(payload: dict, response: Response, db: Session = Depends(get_db
     if not email:
         raise HTTPException(status_code=400, detail="A valid Google credential is required")
 
-    user = db.query(User).filter(User.email == email).first()
+    user = _run(User.find_one(User.email == email))
     if user and full_name and user.full_name != full_name:
         user.full_name = full_name
-        db.commit()
-        db.refresh(user)
+        _run(user.save())
     if not user:
         user = User(
             id=str(uuid4()),
@@ -467,12 +429,10 @@ def google_login(payload: dict, response: Response, db: Session = Depends(get_db
             hashed_password=get_password_hash(secrets.token_urlsafe(24)),
             role=UserRole.RAW_MATERIAL_CONSUMER,
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+        _run(user.insert())
 
     token = create_access_token(user.email)
-    refresh_token = _issue_refresh_token(db, user)
+    refresh_token = _run(_issue_refresh_token(user))
     _set_refresh_cookie(response, refresh_token)
     logger.info("Authenticated Google user %s", user.email)
     return {
@@ -487,18 +447,14 @@ def forgot_password(payload: dict) -> Any:
     email = (payload.get("email") or "").strip()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.email == email).first()
-        if user:
-            user.password_reset_token = secrets.token_urlsafe(32)
-            db.commit()
-            try:
-                send_password_reset_email(user.email, user.password_reset_token)
-            except EmailNotConfigured:
-                logger.info("SMTP not configured; password reset token generated for %s", email)
-    finally:
-        db.close()
+    user = _run(User.find_one(User.email == email))
+    if user:
+        user.password_reset_token = secrets.token_urlsafe(32)
+        _run(user.save())
+        try:
+            send_password_reset_email(user.email, user.password_reset_token)
+        except EmailNotConfigured:
+            logger.info("SMTP not configured; password reset token generated for %s", email)
     logger.info("Password reset requested for %s", email)
     return {"success": True, "message": "If that email exists, reset instructions have been queued.", "data": {"email": email}}
 
@@ -509,12 +465,12 @@ def reset_password(payload: dict, db: Session = Depends(get_db)) -> Any:
     password = (payload.get("password") or "").strip()
     if not token or len(password) < 8:
         raise HTTPException(status_code=400, detail="Valid reset token and password are required")
-    user = db.query(User).filter(User.password_reset_token == token).first()
+    user = _run(User.find_one(User.password_reset_token == token))
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
     user.hashed_password = get_password_hash(password)
     user.password_reset_token = None
-    db.commit()
+    _run(user.save())
     return {"success": True, "message": "Password reset successful", "data": {}}
 
 
@@ -523,17 +479,13 @@ def verify_email(payload: dict) -> Any:
     token = (payload.get("token") or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="Verification token is required")
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.email_verification_token == token).first()
-        if not user:
-            raise HTTPException(status_code=400, detail="Invalid verification token")
-        user.email_verified = True
-        user.email_verification_token = None
-        db.commit()
-        return {"success": True, "message": "Email verified", "data": {"verified": True}}
-    finally:
-        db.close()
+    user = _run(User.find_one(User.email_verification_token == token))
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid verification token")
+    user.email_verified = True
+    user.email_verification_token = None
+    _run(user.save())
+    return {"success": True, "message": "Email verified", "data": {"verified": True}}
 
 @router.post("/logout", response_model=SuccessResponse)
 def logout(
@@ -543,10 +495,10 @@ def logout(
 ) -> Any:
     is_secure_cookie = settings.SECURE_COOKIES or settings.ENVIRONMENT.lower() == "production"
     if refresh_token:
-        token_obj = db.query(RefreshToken).filter(RefreshToken.token == refresh_token, RefreshToken.revoked.is_(False)).first()
+        token_obj = _run(RefreshToken.find_one(RefreshToken.token == refresh_token, RefreshToken.revoked == False))
         if token_obj:
             token_obj.revoked = True
-            db.commit()
+            _run(token_obj.save())
     response.delete_cookie(
         "symbioai_refresh_token",
         path="/api/auth",
@@ -570,16 +522,17 @@ def refresh_access_token(
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token missing")
 
-    token_obj = db.query(RefreshToken).filter(RefreshToken.token == refresh_token, RefreshToken.revoked.is_(False)).first()
+    token_obj = _run(RefreshToken.find_one(RefreshToken.token == refresh_token, RefreshToken.revoked == False))
     if not token_obj or token_obj.expires_at <= _now_utc_naive():
         raise HTTPException(status_code=401, detail="Refresh token invalid or expired")
 
-    user = db.query(User).filter(User.id == token_obj.user_id).first()
+    user = _run(User.find_one(User.id == token_obj.user_id))
     if not user:
         raise HTTPException(status_code=401, detail="User no longer exists")
 
     token_obj.revoked = True
-    new_refresh = _issue_refresh_token(db, user)
+    _run(token_obj.save())
+    new_refresh = _run(_issue_refresh_token(user))
     _set_refresh_cookie(response, new_refresh)
 
     new_access = create_access_token(user.email)
@@ -588,12 +541,12 @@ def refresh_access_token(
 
 @router.post("/2fa/setup", response_model=SuccessResponse)
 def setup_2fa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Any:
-    db_user = db.query(User).filter(User.id == current_user.id).first()
+    db_user = _run(User.find_one(User.id == current_user.id))
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     secret = pyotp.random_base32()
     db_user.two_factor_secret = secret
-    db.commit()
+    _run(db_user.save())
     uri = pyotp.totp.TOTP(secret).provisioning_uri(name=db_user.email, issuer_name="SymbioAI")
     image = qrcode.make(uri)
     buffer = io.BytesIO()
@@ -604,7 +557,7 @@ def setup_2fa(current_user: User = Depends(get_current_user), db: Session = Depe
 
 @router.post("/2fa/enable", response_model=SuccessResponse)
 def enable_2fa(payload: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Any:
-    db_user = db.query(User).filter(User.id == current_user.id).first()
+    db_user = _run(User.find_one(User.id == current_user.id))
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     code = (payload.get("code") or "").strip()
@@ -613,7 +566,7 @@ def enable_2fa(payload: dict, current_user: User = Depends(get_current_user), db
     recovery_codes = [secrets.token_hex(4) for _ in range(8)]
     db_user.two_factor_enabled = True
     db_user.recovery_codes = json.dumps(recovery_codes)
-    db.commit()
+    _run(db_user.save())
     return {"success": True, "message": "2FA enabled", "data": {"recovery_codes": recovery_codes}}
 
 
@@ -621,7 +574,7 @@ def enable_2fa(payload: dict, current_user: User = Depends(get_current_user), db
 def verify_2fa_login(payload: dict, response: Response, db: Session = Depends(get_db)) -> Any:
     email = (payload.get("email") or "").strip()
     code = (payload.get("code") or "").strip()
-    user = db.query(User).filter(User.email == email).first()
+    user = _run(User.find_one(User.email == email))
     if not user or not user.two_factor_secret:
         raise HTTPException(status_code=401, detail="Invalid 2FA request")
     recovery_codes = json.loads(user.recovery_codes or "[]")
@@ -632,16 +585,16 @@ def verify_2fa_login(payload: dict, response: Response, db: Session = Depends(ge
     if valid_recovery:
         recovery_codes.remove(code)
         user.recovery_codes = json.dumps(recovery_codes)
-        db.commit()
+        _run(user.save())
     token = create_access_token(user.email)
-    refresh_token = _issue_refresh_token(db, user)
+    refresh_token = _run(_issue_refresh_token(user))
     _set_refresh_cookie(response, refresh_token)
     return {"success": True, "message": "2FA verified", "data": {"token": token, "user": _public_user(user)}}
 
 
 @router.post("/2fa/disable", response_model=SuccessResponse)
 def disable_2fa(payload: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Any:
-    db_user = db.query(User).filter(User.id == current_user.id).first()
+    db_user = _run(User.find_one(User.id == current_user.id))
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     code = (payload.get("code") or "").strip()
@@ -651,5 +604,5 @@ def disable_2fa(payload: dict, current_user: User = Depends(get_current_user), d
     db_user.two_factor_secret = None
     db_user.recovery_codes = None
     db_user.trusted_device_token = None
-    db.commit()
+    _run(db_user.save())
     return {"success": True, "message": "2FA disabled", "data": {}}

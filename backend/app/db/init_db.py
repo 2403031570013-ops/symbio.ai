@@ -5,10 +5,7 @@ import hashlib
 import hmac
 import secrets
 
-from sqlalchemy.orm import Session
-from sqlalchemy import inspect, text
-
-from app.db.session import Base, engine, SessionLocal
+from app.db.session import SessionLocal
 from app.models import (
     Factory, Material, Transaction, Match, Analytics, User,
     AIRecommendation, DemandPrediction, PriceForecast,
@@ -27,38 +24,8 @@ from app.models.user import UserRole
 logger = logging.getLogger("symbioai.db")
 
 
-def ensure_sqlite_columns() -> None:
-    if engine.dialect.name != "sqlite":
-        return
-
-    inspector = inspect(engine)
-    existing = {table: {column["name"] for column in inspector.get_columns(table)} for table in inspector.get_table_names()}
-    additions = {
-        "users": {
-            "email_verified": "BOOLEAN DEFAULT 0",
-            "email_verification_token": "VARCHAR",
-            "password_reset_token": "VARCHAR",
-            "two_factor_enabled": "BOOLEAN DEFAULT 0",
-            "two_factor_secret": "VARCHAR",
-            "recovery_codes": "TEXT",
-            "trusted_device_token": "VARCHAR",
-            "profile_image_url": "VARCHAR",
-            "factory_logo_url": "VARCHAR",
-        },
-        "materials": {
-            "certificate_url": "VARCHAR",
-            "photo_url": "VARCHAR",
-            "lab_report_url": "VARCHAR",
-            "storage_provider": "VARCHAR",
-        },
-    }
-    with engine.begin() as connection:
-        for table, columns in additions.items():
-            if table not in existing:
-                continue
-            for column, ddl in columns.items():
-                if column not in existing[table]:
-                    connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+def ensure_database_ready() -> None:
+    return None
 
 
 def _hash_password(password: str) -> str:
@@ -479,8 +446,6 @@ def seed_database(db: Session) -> None:
 
 
 def init_db() -> None:
-    Base.metadata.create_all(bind=engine)
-    ensure_sqlite_columns()
     db = SessionLocal()
     try:
         seed_database(db)
