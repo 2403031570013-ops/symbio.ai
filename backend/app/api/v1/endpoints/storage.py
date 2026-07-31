@@ -20,17 +20,14 @@ def get_db() -> None:
     return None
 
 
-def _run(coro):
+async def _run(coro):
     if isawaitable(coro):
-        async def _awaitable_wrapper():
-            return await coro
-
-        return asyncio.run(_awaitable_wrapper())
-    return asyncio.run(coro)
+        return await coro
+    return coro
 
 
 @router.post("/presign", response_model=SuccessResponse)
-def presign_upload(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+async def presign_upload(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
     filename = (payload.get("filename") or "").strip()
     content_type = (payload.get("content_type") or "application/octet-stream").strip()
     purpose = (payload.get("purpose") or "attachment").strip()
@@ -51,13 +48,13 @@ def presign_upload(payload: dict, db: Session = Depends(get_db), current_user: U
         original_name=filename,
         provider="s3",
     )
-    _run(stored.insert())
+    await _run(stored.insert())
     return {"success": True, "message": "Upload URL created", "data": {"upload": {**signed, "id": stored.id}}}
 
 
 @router.get("/objects", response_model=SuccessResponse)
-def list_objects(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    objects = _run(StoredObject.find(StoredObject.owner_id == current_user.id).sort(-StoredObject.created_at).to_list())
+async def list_objects(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    objects = await _run(StoredObject.find(StoredObject.owner_id == current_user.id).sort(-StoredObject.created_at).to_list())
     return {
         "success": True,
         "message": "Objects loaded",

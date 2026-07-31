@@ -20,31 +20,28 @@ def get_db() -> None:
     return None
 
 
-def _run(coro):
+async def _run(coro):
     if isawaitable(coro):
-        async def _awaitable_wrapper():
-            return await coro
-
-        return asyncio.run(_awaitable_wrapper())
-    return asyncio.run(coro)
+        return await coro
+    return coro
 
 
 @router.get("", response_model=SuccessResponse)
-def list_factories(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    factories = _run(Factory.find(Factory.owner_id == current_user.id).to_list())
+async def list_factories(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    factories = await _run(Factory.find(Factory.owner_id == current_user.id).to_list())
     return {"success": True, "message": "Operation successful", "data": {"factories": [FactoryOut.model_validate(factory).model_dump() for factory in factories]}}
 
 
 @router.post("", response_model=SuccessResponse)
-def create_factory(factory_in: FactoryCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+async def create_factory(factory_in: FactoryCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
     factory = Factory(id=str(uuid4()), owner_id=current_user.id, **factory_in.model_dump())
-    _run(factory.insert())
+    await _run(factory.insert())
     return {"success": True, "message": "Operation successful", "data": {"factory": FactoryOut.model_validate(factory).model_dump()}}
 
 
 @router.put("/{factory_id}", response_model=SuccessResponse)
-def update_factory(factory_id: str, factory_in: FactoryUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    factory = _run(Factory.find_one(Factory.id == factory_id))
+async def update_factory(factory_id: str, factory_in: FactoryUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    factory = await _run(Factory.find_one(Factory.id == factory_id))
     if not factory:
         raise HTTPException(status_code=404, detail="Factory not found")
     if factory.owner_id != current_user.id:
@@ -53,5 +50,5 @@ def update_factory(factory_id: str, factory_in: FactoryUpdate, db: Session = Dep
     for field, value in factory_in.model_dump(exclude_unset=True).items():
         setattr(factory, field, value)
 
-    _run(factory.save())
+    await _run(factory.save())
     return {"success": True, "message": "Operation successful", "data": {"factory": FactoryOut.model_validate(factory).model_dump()}}

@@ -31,18 +31,15 @@ def get_db() -> None:
     return None
 
 
-def _run(coro):
+async def _run(coro):
     if isawaitable(coro):
-        async def _awaitable_wrapper():
-            return await coro
-
-        return asyncio.run(_awaitable_wrapper())
-    return asyncio.run(coro)
+        return await coro
+    return coro
 
 
 # ── Feature 1: AI Symbiosis Recommendations ──────────────────────────────────
 @router.post("/recommendations", response_model=AIRecommendationResponse)
-def create_recommendation(
+async def create_recommendation(
     recommendation: AIRecommendationCreate,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
@@ -56,7 +53,7 @@ def create_recommendation(
 
 
 @router.get("/recommendations")
-def get_recommendations(
+async def get_recommendations(
     skip: int = 0,
     limit: int = 100,
     status: Optional[str] = None,
@@ -95,7 +92,7 @@ def get_recommendations(
 
 
 @router.put("/recommendations/{recommendation_id}/status")
-def update_recommendation_status(
+async def update_recommendation_status(
     recommendation_id: str,
     status: str,
     db: Session = Depends(get_db),
@@ -115,7 +112,7 @@ def update_recommendation_status(
 
 # ── Feature 2: Demand Prediction ─────────────────────────────────────────────
 @router.post("/demand-predictions", response_model=DemandPredictionResponse)
-def create_demand_prediction(
+async def create_demand_prediction(
     prediction: DemandPredictionCreate,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)

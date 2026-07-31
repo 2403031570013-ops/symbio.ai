@@ -49,13 +49,10 @@ def get_db() -> None:
     return None
 
 
-def _run(coro):
+async def _run(coro):
     if isawaitable(coro):
-        async def _awaitable_wrapper():
-            return await coro
-
-        return asyncio.run(_awaitable_wrapper())
-    return asyncio.run(coro)
+        return await coro
+    return coro
 
 
 def _hash_password(password: str) -> str:
@@ -76,7 +73,7 @@ def _verify_password(password: str, stored_hash: str) -> bool:
 
 
 @router.get("/health-check")
-def health_check() -> dict:
+async def health_check() -> dict:
     return {"success": True, "message": "ok"}
 
 
@@ -527,7 +524,7 @@ async def logout(
 
 
 @router.get("/me", response_model=SuccessResponse)
-def me(current_user: User = Depends(get_current_user)) -> Any:
+async def me(current_user: User = Depends(get_current_user)) -> Any:
     return {"success": True, "message": "Operation successful", "data": {"user": _public_user(current_user)}}
 
 

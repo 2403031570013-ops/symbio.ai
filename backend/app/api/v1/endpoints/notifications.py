@@ -17,13 +17,10 @@ def get_db() -> None:
     return None
 
 
-def _run(coro):
+async def _run(coro):
     if isawaitable(coro):
-        async def _awaitable_wrapper():
-            return await coro
-
-        return asyncio.run(_awaitable_wrapper())
-    return asyncio.run(coro)
+        return await coro
+    return coro
 
 
 def serialize(item: Notification) -> dict:
@@ -41,16 +38,16 @@ def serialize(item: Notification) -> dict:
 
 
 @router.get("", response_model=SuccessResponse)
-def list_notifications(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    notifications = _run(Notification.find(Notification.user_id == current_user.id).sort(-Notification.created_at).limit(100).to_list())
+async def list_notifications(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    notifications = await _run(Notification.find(Notification.user_id == current_user.id).sort(-Notification.created_at).limit(100).to_list())
     return {"success": True, "message": "Notifications loaded", "data": {"notifications": [serialize(item) for item in notifications], "unread_count": sum(1 for item in notifications if not item.read)}}
 
 
 @router.put("/{notification_id}/read", response_model=SuccessResponse)
-def mark_read(notification_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    notification = _run(Notification.find_one(Notification.id == notification_id, Notification.user_id == current_user.id))
+async def mark_read(notification_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    notification = await _run(Notification.find_one(Notification.id == notification_id, Notification.user_id == current_user.id))
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
     notification.read = True
-    _run(notification.save())
+    await _run(notification.save())
     return {"success": True, "message": "Notification marked read", "data": {"notification": serialize(notification)}}

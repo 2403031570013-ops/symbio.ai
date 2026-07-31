@@ -177,9 +177,9 @@ async def list_users(q: str = "", role: str = "", status: str = "", current_user
 
 
 @router.put("/users/{user_id}", response_model=SuccessResponse)
-def edit_user(user_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    user = db.query(User).filter(User.id == user_id).first()
+async def edit_user(user_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    user = await User.find_one(User.id == user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     before = user_payload(user)
@@ -189,16 +189,15 @@ def edit_user(user_id: str, payload: dict, request: Request, db: Session = Depen
         user.email_verified = bool(payload["email_verified"])
     if "factory_logo_url" in payload:
         user.factory_logo_url = str(payload["factory_logo_url"] or "").strip() or None
-    audit(db, request, current_user, "user", user.id, "update", {"before": before, "after": payload})
-    db.commit()
-    db.refresh(user)
+    await audit(request, current_user, "user", user.id, "update", {"before": before, "after": payload})
+    await user.save()
     return {"success": True, "message": "User updated", "data": {"user": user_payload(user)}}
 
 
 @router.put("/users/{user_id}/role", response_model=SuccessResponse)
-def update_user_role(user_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    user = db.query(User).filter(User.id == user_id).first()
+async def update_user_role(user_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    user = await User.find_one(User.id == user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     next_role = UserRole(payload.get("role"))
@@ -208,55 +207,55 @@ def update_user_role(user_id: str, payload: dict, request: Request, db: Session 
         raise HTTPException(status_code=400, detail="Admins cannot remove their own admin access")
     before = user.role.value
     user.role = next_role
-    audit(db, request, current_user, "user", user.id, "change_role", {"before": before, "after": next_role.value})
-    db.commit()
-    db.refresh(user)
+    await audit(request, current_user, "user", user.id, "change_role", {"before": before, "after": next_role.value})
+    await user.save()
     return {"success": True, "message": "Role updated", "data": {"user": user_payload(user)}}
 
 
 @router.put("/users/{user_id}/suspend", response_model=SuccessResponse)
-def suspend_user(user_id: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    user = db.query(User).filter(User.id == user_id).first()
+async def suspend_user(user_id: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    user = await User.find_one(User.id == user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Admins cannot suspend themselves")
     user.is_active = False
-    create_notification(db, user.id, "account", "Account suspended", "Your SymbioAI account was suspended by an administrator. Contact support if you believe this is incorrect.", action_url="/login", email=user.email)
-    audit(db, request, current_user, "user", user.id, "suspend")
-    db.commit()
+    # create_notification expects a db in older signature; updated to use create_notification wrapper which accepts None for db
+    create_notification(None, user.id, "account", "Account suspended", "Your SymbioAI account was suspended by an administrator. Contact support if you believe this is incorrect.", action_url="/login", email=user.email)
+    await audit(request, current_user, "user", user.id, "suspend")
+    await user.save()
     return {"success": True, "message": "User suspended", "data": {"user": user_payload(user)}}
 
 
 @router.put("/users/{user_id}/activate", response_model=SuccessResponse)
-def activate_user(user_id: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    user = db.query(User).filter(User.id == user_id).first()
+async def activate_user(user_id: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    user = await User.find_one(User.id == user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_active = True
-    create_notification(db, user.id, "account", "Account activated", "Your SymbioAI account is active again. You can now sign in.", action_url="/login", email=user.email)
-    audit(db, request, current_user, "user", user.id, "activate")
-    db.commit()
+    create_notification(None, user.id, "account", "Account activated", "Your SymbioAI account is active again. You can now sign in.", action_url="/login", email=user.email)
+    await audit(request, current_user, "user", user.id, "activate")
+    await user.save()
     return {"success": True, "message": "User activated", "data": {"user": user_payload(user)}}
 
 
 @router.delete("/users/{user_id}", response_model=SuccessResponse)
-def delete_user(user_id: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_super_admin(current_user)
-    user = db.query(User).filter(User.id == user_id).first()
+async def delete_user(user_id: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_super_admin(current_user)
+    user = await User.find_one(User.id == user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Super Admin cannot delete self")
     payload = user_payload(user)
-    # A deleted account is permanently removed. Revoke all server-side sessions
-    # first so the former user cannot refresh an existing browser session.
-    db.query(RefreshToken).filter(RefreshToken.user_id == user.id).delete(synchronize_session=False)
-    db.delete(user)
-    audit(db, request, current_user, "user", user_id, "permanent_delete", payload)
-    db.commit()
+    # Revoke refresh tokens
+    tokens = await RefreshToken.find(RefreshToken.user_id == user.id).to_list()
+    for t in tokens:
+        await t.delete()
+    await user.delete()
+    await audit(request, current_user, "user", user_id, "permanent_delete", payload)
     return {
         "success": True,
         "message": "Account permanently deleted. The person must register again to access SymbioAI.",
@@ -265,44 +264,44 @@ def delete_user(user_id: str, request: Request, db: Session = Depends(get_db), c
 
 
 @router.post("/users/{user_id}/reset-password", response_model=SuccessResponse)
-def reset_user_password(user_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    user = db.query(User).filter(User.id == user_id).first()
+async def reset_user_password(user_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    user = await User.find_one(User.id == user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     temporary_password = payload.get("password") or f"Symbio-{secrets.token_urlsafe(6)}1!"
     user.hashed_password = get_password_hash(temporary_password)
-    audit(db, request, current_user, "user", user.id, "reset_password")
-    db.commit()
+    await audit(request, current_user, "user", user.id, "reset_password")
+    await user.save()
     return {"success": True, "message": "Password reset", "data": {"temporary_password": temporary_password}}
 
 
 @router.put("/users/{user_id}/company/{decision}", response_model=SuccessResponse)
-def verify_company(user_id: str, decision: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    user = db.query(User).filter(User.id == user_id).first()
+async def verify_company(user_id: str, decision: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    user = await User.find_one(User.id == user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if decision not in {"verify", "reject"}:
         raise HTTPException(status_code=400, detail="Invalid company decision")
     user.email_verified = decision == "verify"
-    create_notification(db, user.id, "verification", f"Company {decision}ed", f"Your company verification was {decision}ed by an administrator.", action_url="/dashboard", email=user.email)
-    audit(db, request, current_user, "company", user.id, decision)
-    db.commit()
+    create_notification(None, user.id, "verification", f"Company {decision}ed", f"Your company verification was {decision}ed by an administrator.", action_url="/dashboard", email=user.email)
+    await audit(request, current_user, "company", user.id, decision)
+    await user.save()
     return {"success": True, "message": f"Company {decision}ed", "data": {"user": user_payload(user)}}
 
 
 @router.get("/factories", response_model=SuccessResponse)
-def list_factories(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    factories = db.query(Factory).order_by(Factory.created_at.desc()).all()
-    return {"success": True, "message": "Factories loaded", "data": {"factories": [{"id": f.id, "name": f.name, "industry": f.industry, "location": f.location, "verified": f.verified, "owner_id": f.owner_id, "created_at": f.created_at.isoformat() if f.created_at else None} for f in factories]}}
+async def list_factories(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    factories = await Factory.find_all().sort(-Factory.created_at).to_list()
+    return {"success": True, "message": "Factories loaded", "data": {"factories": [{"id": f.id, "name": f.name, "industry": f.industry, "location": f.location, "verified": getattr(f, 'verified', False), "owner_id": getattr(f, 'owner_id', None), "created_at": getattr(f, 'created_at', None).isoformat() if getattr(f, 'created_at', None) else None} for f in factories]}}
 
 
 @router.get("/factories/{factory_id}/documents", response_model=SuccessResponse)
-def list_factory_documents(factory_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    docs = db.query(DocumentCompliance).filter(DocumentCompliance.factory_id == factory_id).all()
+async def list_factory_documents(factory_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    docs = await DocumentCompliance.find(DocumentCompliance.factory_id == factory_id).to_list()
     return {
         "success": True,
         "message": "Documents loaded",
@@ -325,52 +324,51 @@ def list_factory_documents(factory_id: str, db: Session = Depends(get_db), curre
 
 
 @router.put("/factories/{factory_id}/{decision}", response_model=SuccessResponse)
-def factory_decision(factory_id: str, decision: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    factory = db.query(Factory).filter(Factory.id == factory_id).first()
+async def factory_decision(factory_id: str, decision: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    factory = await Factory.find_one(Factory.id == factory_id)
     if not factory:
         raise HTTPException(status_code=404, detail="Factory not found")
     if decision not in {"verify", "reject"}:
         raise HTTPException(status_code=400, detail="Invalid factory decision")
     factory.verified = decision == "verify"
-    audit(db, request, current_user, "factory", factory.id, decision)
-    db.commit()
+    await audit(request, current_user, "factory", factory.id, decision)
+    await factory.save()
     return {"success": True, "message": f"Factory {decision}ed", "data": {"factory": {"id": factory.id, "verified": factory.verified}}}
 
 
 @router.get("/listings", response_model=SuccessResponse)
-def list_materials(q: str = "", status: str = "", db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    query = db.query(Material)
+async def list_materials(q: str = "", status: str = "", db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    materials = await Material.find_all().to_list()
     if q:
-        like = f"%{q.strip()}%"
-        query = query.filter(or_(Material.name.ilike(like), Material.chemical_composition.ilike(like)))
+        q_lower = q.strip().lower()
+        materials = [m for m in materials if q_lower in (m.name or "").lower() or q_lower in (m.chemical_composition or "").lower()]
     if status:
-        query = query.filter(Material.status == status)
-    materials = query.order_by(Material.created_at.desc()).all()
+        materials = [m for m in materials if getattr(m, 'status', None) == status]
+    materials = sorted(materials, key=lambda m: getattr(m, 'created_at', None) or datetime.min, reverse=True)
     return {"success": True, "message": "Listings loaded", "data": {"listings": [listing_payload(item) for item in materials]}}
 
 
 @router.put("/listings/{material_id}", response_model=SuccessResponse)
-def edit_listing(material_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    material = db.query(Material).filter(Material.id == material_id).first()
+async def edit_listing(material_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    material = await Material.find_one(Material.id == material_id)
     if not material:
         raise HTTPException(status_code=404, detail="Listing not found")
     before = listing_payload(material)
     for field in ["name", "chemical_composition", "physical_state", "quantity", "frequency", "certificate"]:
         if field in payload and str(payload[field]).strip():
             setattr(material, field, str(payload[field]).strip())
-    audit(db, request, current_user, "listing", material.id, "edit", {"before": before, "after": payload})
-    db.commit()
-    db.refresh(material)
+    await audit(request, current_user, "listing", material.id, "edit", {"before": before, "after": payload})
+    await material.save()
     return {"success": True, "message": "Listing updated", "data": {"listing": listing_payload(material)}}
 
 
 @router.put("/listings/{material_id}/status", response_model=SuccessResponse)
-def update_listing_status(material_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    material = db.query(Material).filter(Material.id == material_id).first()
+async def update_listing_status(material_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    material = await Material.find_one(Material.id == material_id)
     if not material:
         raise HTTPException(status_code=404, detail="Listing not found")
     status = (payload.get("status") or "").strip().lower()
@@ -378,48 +376,51 @@ def update_listing_status(material_id: str, payload: dict, request: Request, db:
         raise HTTPException(status_code=400, detail="Invalid listing status")
     before = material.status
     material.status = status
-    audit(db, request, current_user, "listing", material.id, f"status_{status}", {"before": before, "after": status})
-    db.commit()
+    await audit(request, current_user, "listing", material.id, f"status_{status}", {"before": before, "after": status})
+    await material.save()
     return {"success": True, "message": "Listing status updated", "data": {"listing": {"id": material.id, "status": material.status}}}
 
 
 @router.post("/listings/bulk-status", response_model=SuccessResponse)
-def bulk_listing_status(payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
+async def bulk_listing_status(payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
     ids = payload.get("ids") or []
     status = (payload.get("status") or "").strip().lower()
     if status not in {"approved", "rejected", "archived", "flagged"}:
         raise HTTPException(status_code=400, detail="Invalid listing status")
-    updated = db.query(Material).filter(Material.id.in_(ids)).update({"status": status}, synchronize_session=False)
-    audit(db, request, current_user, "listing", "bulk", f"bulk_{status}", {"ids": ids, "count": updated})
-    db.commit()
+    materials = await Material.find(Material.id.in_(ids)).to_list()
+    updated = 0
+    for m in materials:
+        m.status = status
+        await m.save()
+        updated += 1
+    await audit(request, current_user, "listing", "bulk", f"bulk_{status}", {"ids": ids, "count": updated})
     return {"success": True, "message": "Listings updated", "data": {"updated": updated}}
 
 
 @router.delete("/listings/{material_id}", response_model=SuccessResponse)
-def delete_listing(material_id: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    material = db.query(Material).filter(Material.id == material_id).first()
+async def delete_listing(material_id: str, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    material = await Material.find_one(Material.id == material_id)
     if not material:
         raise HTTPException(status_code=404, detail="Listing not found")
     payload = listing_payload(material)
-    db.delete(material)
-    audit(db, request, current_user, "listing", material_id, "delete", payload)
-    db.commit()
+    await material.delete()
+    await audit(request, current_user, "listing", material_id, "delete", payload)
     return {"success": True, "message": "Listing deleted", "data": {"id": material_id}}
 
 
 @router.get("/transactions", response_model=SuccessResponse)
-def transaction_monitoring(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    transactions = db.query(Transaction).order_by(Transaction.created_at.desc()).all()
-    return {"success": True, "message": "Transactions loaded", "data": {"transactions": [{"id": item.id, "partner_name": item.partner_name, "amount": item.amount, "status": item.status, "material_id": item.material_id, "created_at": item.created_at.isoformat() if item.created_at else None} for item in transactions]}}
+async def transaction_monitoring(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    transactions = await Transaction.find_all().sort(-Transaction.created_at).to_list()
+    return {"success": True, "message": "Transactions loaded", "data": {"transactions": [{"id": item.id, "partner_name": item.partner_name, "amount": item.amount, "status": item.status, "material_id": item.material_id, "created_at": getattr(item, 'created_at', None).isoformat() if getattr(item, 'created_at', None) else None} for item in transactions]}}
 
 
 @router.put("/transactions/{transaction_id}/status", response_model=SuccessResponse)
-def update_transaction(transaction_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+async def update_transaction(transaction_id: str, payload: dict, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    tx = await Transaction.find_one(Transaction.id == transaction_id)
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     status = str(payload.get("status") or "").strip()
@@ -427,16 +428,16 @@ def update_transaction(transaction_id: str, payload: dict, request: Request, db:
         raise HTTPException(status_code=400, detail="Invalid transaction status")
     before = tx.status
     tx.status = status
-    audit(db, request, current_user, "transaction", tx.id, "status_update", {"before": before, "after": status})
-    db.commit()
+    await audit(request, current_user, "transaction", tx.id, "status_update", {"before": before, "after": status})
+    await tx.save()
     return {"success": True, "message": "Transaction updated", "data": {"transaction": {"id": tx.id, "status": tx.status}}}
 
 
 @router.get("/ai-matches", response_model=SuccessResponse)
-def ai_match_monitoring(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    matches = db.query(Match).order_by(Match.created_at.desc()).all()
-    return {"success": True, "message": "AI matches loaded", "data": {"threshold": AI_SETTINGS["confidence_threshold"], "matches": [{"id": item.id, "material_id": item.material_id, "partner_name": item.partner_name, "symbio_score": item.symbio_score, "distance_km": item.distance_km, "carbon_savings": item.carbon_savings, "summary": item.summary} for item in matches]}}
+async def ai_match_monitoring(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    matches = await Match.find_all().sort(-Match.created_at).to_list()
+    return {"success": True, "message": "AI matches loaded", "data": {"threshold": AI_SETTINGS["confidence_threshold"], "matches": [{"id": item.id, "material_id": item.material_id, "partner_name": item.partner_name, "symbio_score": getattr(item, 'symbio_score', None), "distance_km": getattr(item, 'distance_km', None), "carbon_savings": getattr(item, 'carbon_savings', None), "summary": getattr(item, 'summary', None)} for item in matches]}}
 
 
 @router.put("/ai-matches/settings", response_model=SuccessResponse)

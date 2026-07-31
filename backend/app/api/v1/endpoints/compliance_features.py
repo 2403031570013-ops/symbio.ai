@@ -23,24 +23,21 @@ def get_db() -> None:
     return None
 
 
-def _run(coro):
+async def _run(coro):
     if isawaitable(coro):
-        async def _awaitable_wrapper():
-            return await coro
-
-        return asyncio.run(_awaitable_wrapper())
-    return asyncio.run(coro)
+        return await coro
+    return coro
 
 
 @router.post("/compliance-check", response_model=ComplianceCheckResponse)
-def create_compliance_check(
+async def create_compliance_check(
     check: ComplianceCheckCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     """Create compliance check"""
     db_check = ComplianceCheck(**check.dict())
-    _run(db_check.insert())
+    await _run(db_check.insert())
     return db_check
 
 
@@ -51,7 +48,7 @@ def get_compliance_checks(
     current_user = Depends(get_current_user)
 ):
     """Get compliance checks for a factory"""
-    checks = _run(ComplianceCheck.find(ComplianceCheck.factory_id == factory_id).sort(-ComplianceCheck.created_at).to_list())
+    checks = await _run(ComplianceCheck.find(ComplianceCheck.factory_id == factory_id).sort(-ComplianceCheck.created_at).to_list())
     return checks
 
 
@@ -63,7 +60,7 @@ def create_risk_assessment(
 ):
     """Create risk assessment"""
     db_assessment = RiskAssessment(**assessment.dict())
-    _run(db_assessment.insert())
+    await _run(db_assessment.insert())
     return db_assessment
 
 
@@ -74,7 +71,7 @@ def get_risk_assessments(
     current_user = Depends(get_current_user)
 ):
     """Get risk assessments for a factory"""
-    assessments = _run(RiskAssessment.find(RiskAssessment.factory_id == factory_id).sort(-RiskAssessment.created_at).to_list())
+    assessments = await _run(RiskAssessment.find(RiskAssessment.factory_id == factory_id).sort(-RiskAssessment.created_at).to_list())
     return assessments
 
 
@@ -86,7 +83,7 @@ def get_audit_trail(
     current_user = Depends(get_current_user)
 ):
     """Get audit trail for an entity"""
-    trail = _run(AuditTrail.find(AuditTrail.entity_type == entity_type, AuditTrail.entity_id == entity_id).sort(-AuditTrail.timestamp).to_list())
+    trail = await _run(AuditTrail.find(AuditTrail.entity_type == entity_type, AuditTrail.entity_id == entity_id).sort(-AuditTrail.timestamp).to_list())
     return trail
 
 
@@ -98,7 +95,7 @@ def create_document_compliance(
 ):
     """Create document compliance record"""
     db_document = DocumentCompliance(**document.dict())
-    _run(db_document.insert())
+    await _run(db_document.insert())
     return db_document
 
 
@@ -109,7 +106,7 @@ def get_document_compliance(
     current_user = Depends(get_current_user)
 ):
     """Get document compliance for a factory"""
-    documents = _run(DocumentCompliance.find(DocumentCompliance.factory_id == factory_id).to_list())
+    documents = await _run(DocumentCompliance.find(DocumentCompliance.factory_id == factory_id).to_list())
     return documents
 
 
@@ -120,7 +117,7 @@ def get_regulatory_updates(
     current_user = Depends(get_current_user)
 ):
     """Get regulatory updates"""
-    query = _run(RegulatoryUpdate.find_all().to_list())
+    query = await _run(RegulatoryUpdate.find_all().to_list())
     if jurisdiction:
         query = [item for item in query if item.jurisdiction == jurisdiction]
     return sorted(query, key=lambda item: item.created_at, reverse=True)
@@ -133,5 +130,5 @@ def get_fraud_detections(
     current_user = Depends(get_current_user)
 ):
     """Get fraud detections for a factory"""
-    detections = _run(FraudDetection.find(FraudDetection.entity_type == "factory", FraudDetection.entity_id == factory_id).sort(-FraudDetection.created_at).to_list())
+    detections = await _run(FraudDetection.find(FraudDetection.entity_type == "factory", FraudDetection.entity_id == factory_id).sort(-FraudDetection.created_at).to_list())
     return detections

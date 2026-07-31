@@ -23,35 +23,32 @@ def get_db() -> None:
     return None
 
 
-def _run(coro):
+async def _run(coro):
     if isawaitable(coro):
-        async def _awaitable_wrapper():
-            return await coro
-
-        return asyncio.run(_awaitable_wrapper())
-    return asyncio.run(coro)
+        return await coro
+    return coro
 
 
 @router.post("/route-optimization", response_model=RouteOptimizationResponse)
-def create_route_optimization(
+async def create_route_optimization(
     optimization: RouteOptimizationCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     """Create route optimization"""
     db_optimization = RouteOptimization(**optimization.dict())
-    _run(db_optimization.insert())
+    await _run(db_optimization.insert())
     return db_optimization
 
 
 @router.get("/route-optimization/{shipment_id}", response_model=RouteOptimizationResponse)
-def get_route_optimization(
+async def get_route_optimization(
     shipment_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     """Get route optimization for a shipment"""
-    optimization = _run(RouteOptimization.find_one(RouteOptimization.shipment_id == shipment_id))
+    optimization = await _run(RouteOptimization.find_one(RouteOptimization.shipment_id == shipment_id))
     if not optimization:
         raise HTTPException(status_code=404, detail="Route optimization not found")
     return optimization
@@ -65,18 +62,18 @@ def create_inventory(
 ):
     """Create inventory record"""
     db_inventory = Inventory(**inventory.dict())
-    _run(db_inventory.insert())
+    await _run(db_inventory.insert())
     return db_inventory
 
 
 @router.get("/inventory/{factory_id}", response_model=List[InventoryResponse])
-def get_inventory(
+async def get_inventory(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     """Get inventory for a factory"""
-    inventory = _run(Inventory.find(Inventory.factory_id == factory_id).to_list())
+    inventory = await _run(Inventory.find(Inventory.factory_id == factory_id).to_list())
     return inventory
 
 
@@ -88,12 +85,12 @@ def update_inventory(
     current_user = Depends(get_current_user)
 ):
     """Update inventory stock"""
-    inventory = _run(Inventory.find_one(Inventory.id == inventory_id))
+    inventory = await _run(Inventory.find_one(Inventory.id == inventory_id))
     if not inventory:
         raise HTTPException(status_code=404, detail="Inventory not found")
     
     inventory.current_stock = current_stock
-    _run(inventory.save())
+    await _run(inventory.save())
     return {"message": "Inventory updated successfully"}
 
 
@@ -105,7 +102,7 @@ def create_supply_chain_visibility(
 ):
     """Create supply chain visibility record"""
     db_visibility = SupplyChainVisibility(**visibility.dict())
-    _run(db_visibility.insert())
+    await _run(db_visibility.insert())
     return db_visibility
 
 
@@ -116,7 +113,7 @@ def get_supply_chain_visibility(
     current_user = Depends(get_current_user)
 ):
     """Get supply chain visibility for a material"""
-    visibility = _run(SupplyChainVisibility.find(SupplyChainVisibility.material_id == material_id).to_list())
+    visibility = await _run(SupplyChainVisibility.find(SupplyChainVisibility.material_id == material_id).to_list())
     return visibility
 
 
@@ -127,7 +124,7 @@ def get_shipment_tracking(
     current_user = Depends(get_current_user)
 ):
     """Get shipment tracking information"""
-    tracking = _run(ShipmentTracking.find_one(ShipmentTracking.shipment_id == shipment_id))
+    tracking = await _run(ShipmentTracking.find_one(ShipmentTracking.shipment_id == shipment_id))
     if not tracking:
         raise HTTPException(status_code=404, detail="Shipment tracking not found")
     return tracking
@@ -140,7 +137,7 @@ def get_supplier_performance(
     current_user = Depends(get_current_user)
 ):
     """Get supplier performance metrics"""
-    performance = _run(SupplierPerformance.find(SupplierPerformance.supplier_id == supplier_id).sort(-SupplierPerformance.updated_at).first_or_none())
+    performance = await _run(SupplierPerformance.find(SupplierPerformance.supplier_id == supplier_id).sort(-SupplierPerformance.updated_at).first_or_none())
     if not performance:
         raise HTTPException(status_code=404, detail="Supplier performance not found")
     return performance
@@ -153,5 +150,5 @@ def get_logistics_cost(
     current_user = Depends(get_current_user)
 ):
     """Get logistics cost breakdown"""
-    costs = _run(LogisticsCost.find(LogisticsCost.shipment_id == shipment_id).to_list())
+    costs = await _run(LogisticsCost.find(LogisticsCost.shipment_id == shipment_id).to_list())
     return costs

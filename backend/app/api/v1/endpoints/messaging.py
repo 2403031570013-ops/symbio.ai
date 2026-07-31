@@ -23,13 +23,10 @@ def get_db() -> None:
     return None
 
 
-def _run(coro):
+async def _run(coro):
     if isawaitable(coro):
-        async def _awaitable_wrapper():
-            return await coro
-
-        return asyncio.run(_awaitable_wrapper())
-    return asyncio.run(coro)
+        return await coro
+    return coro
 
 
 def serialize_conversation(conversation: Conversation) -> dict:
@@ -65,13 +62,13 @@ def serialize_message(message: Message) -> dict:
 
 
 @router.get("/conversations", response_model=SuccessResponse)
-def list_conversations(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    conversations = _run(Conversation.find(Conversation.seller_id == current_user.id).sort(-Conversation.last_message_at).to_list())
+async def list_conversations(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    conversations = await _run(Conversation.find(Conversation.seller_id == current_user.id).sort(-Conversation.last_message_at).to_list())
     return {"success": True, "message": "Conversations loaded", "data": {"conversations": [serialize_conversation(item) for item in conversations]}}
 
 
 @router.post("/conversations", response_model=SuccessResponse)
-def create_conversation(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+async def create_conversation(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
     material_name = (payload.get("material_name") or payload.get("match_name") or "").strip()
     partner_name = (payload.get("partner_name") or "").strip()
     initial_message = (payload.get("message") or "").strip()
@@ -84,7 +81,7 @@ def create_conversation(payload: dict, db: Session = Depends(get_db), current_us
 
     conversation = None
     if match_id:
-        conversation = _run(Conversation.find_one(Conversation.match_id == match_id, Conversation.seller_id == current_user.id))
+        conversation = await _run(Conversation.find_one(Conversation.match_id == match_id, Conversation.seller_id == current_user.id))
 
     if not conversation:
         conversation = Conversation(
@@ -97,7 +94,7 @@ def create_conversation(payload: dict, db: Session = Depends(get_db), current_us
             unread_count=0,
             last_message_at=datetime.now(timezone.utc),
         )
-        _run(conversation.insert())
+        await _run(conversation.insert())
 
     message = Message(
         id=str(uuid4()),
@@ -109,8 +106,8 @@ def create_conversation(payload: dict, db: Session = Depends(get_db), current_us
         is_read=True,
     )
     conversation.last_message_at = datetime.now(timezone.utc)
-    _run(message.insert())
-    _run(conversation.save())
+    await _run(message.insert())
+    await _run(conversation.save())
     create_notification(
         db,
         current_user.id,
@@ -128,17 +125,17 @@ def create_conversation(payload: dict, db: Session = Depends(get_db), current_us
 
 
 @router.get("/conversations/{conversation_id}/messages", response_model=SuccessResponse)
-def list_messages(conversation_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    conversation = _run(Conversation.find_one(Conversation.id == conversation_id, Conversation.seller_id == current_user.id))
+async def list_messages(conversation_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    conversation = await _run(Conversation.find_one(Conversation.id == conversation_id, Conversation.seller_id == current_user.id))
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    messages = _run(Message.find(Message.conversation_id == conversation_id).sort(Message.created_at).to_list())
+    messages = await _run(Message.find(Message.conversation_id == conversation_id).sort(Message.created_at).to_list())
     conversation.unread_count = 0
     for message in messages:
         message.is_read = True
-        _run(message.save())
-    _run(conversation.save())
+        await _run(message.save())
+    await _run(conversation.save())
     return {"success": True, "message": "Messages loaded", "data": {"messages": [serialize_message(item) for item in messages]}}
 
 

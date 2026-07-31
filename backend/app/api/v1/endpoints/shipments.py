@@ -19,22 +19,19 @@ def get_db() -> None:
     return None
 
 
-def _run(coro):
+async def _run(coro):
     if isawaitable(coro):
-        async def _awaitable_wrapper():
-            return await coro
-
-        return asyncio.run(_awaitable_wrapper())
-    return asyncio.run(coro)
+        return await coro
+    return coro
 
 
 @router.get("", response_model=SuccessResponse)
-def list_shipments(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    transactions = _run(Transaction.find(Transaction.status != "Draft").to_list())
+async def list_shipments(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    transactions = await _run(Transaction.find(Transaction.status != "Draft").to_list())
     return {"success": True, "message": "Operation successful", "data": {"shipments": [{"id": txn.id, "partner_name": txn.partner_name, "status": txn.status} for txn in transactions]}}
 
 
 @router.post("", response_model=SuccessResponse)
-def create_shipment(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+async def create_shipment(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
     transaction_id = payload.get("transaction_id") or str(uuid4())
     return {"success": True, "message": "Operation successful", "data": {"shipment": {"id": transaction_id, "status": "Scheduled"}}}

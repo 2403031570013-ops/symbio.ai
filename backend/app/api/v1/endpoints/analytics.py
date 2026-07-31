@@ -18,18 +18,15 @@ def get_db() -> None:
     return None
 
 
-def _run(coro):
+async def _run(coro):
     if isawaitable(coro):
-        async def _awaitable_wrapper():
-            return await coro
-
-        return asyncio.run(_awaitable_wrapper())
-    return asyncio.run(coro)
+        return await coro
+    return coro
 
 
 @router.get("/dashboard", response_model=SuccessResponse)
-def dashboard_analytics(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    analytics = _run(Analytics.find_all().sort(-Analytics.created_at).first_or_none())
+async def dashboard_analytics(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
+    analytics = await _run(Analytics.find_all().sort(-Analytics.created_at).first_or_none())
     if not analytics:
         analytics = Analytics(
             id="analytics-1",
@@ -38,5 +35,5 @@ def dashboard_analytics(db: Session = Depends(get_db), current_user: User = Depe
             landfill_diversion=3820,
             active_matches=42,
         )
-        _run(analytics.insert())
+        await _run(analytics.insert())
     return {"success": True, "message": "Operation successful", "data": {"analytics": AnalyticsOut.model_validate(analytics).model_dump()}}
