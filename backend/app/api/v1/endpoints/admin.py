@@ -11,7 +11,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from app.api.v1.endpoints.auth import get_password_hash
 from app.core.config import settings
 from app.core.security import get_current_user
-from app.db.session import SessionLocal, desc, func, or_
 from app.models.analytics import Analytics
 from app.models.auth import RefreshToken
 from app.models.compliance_risk import AuditTrail, DocumentCompliance
@@ -27,45 +26,41 @@ from app.schemas.common import SuccessResponse
 from app.services.notification_service import create_notification
 
 router = APIRouter()
-Session = Any
 
 ADMIN_ROLES = {UserRole.ADMIN, UserRole.SUPER_ADMIN}
 AI_SETTINGS = {"confidence_threshold": 80}
 
-
-def get_db() -> Session:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+Session = Any
 
 
-def require_admin(current_user: User) -> None:
+def get_db():
+    """Compatibility stub dependency retained for existing endpoint signatures."""
+    return None
+
+
+async def require_admin(current_user: User) -> None:
     if current_user.role not in ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
-def require_super_admin(current_user: User) -> None:
-    require_admin(current_user)
+async def require_super_admin(current_user: User) -> None:
+    await require_admin(current_user)
     if current_user.role != UserRole.SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="Super Admin access required")
 
 
-def audit(db: Session, request: Request, actor: User, entity_type: str, entity_id: str, action: str, changes: dict | None = None, reason: str | None = None) -> None:
-    db.add(
-        AuditTrail(
-            id=str(uuid4()),
-            entity_type=entity_type,
-            entity_id=entity_id,
-            action=action,
-            user_id=actor.id,
-            user_role=actor.role.value,
-            ip_address=request.client.host if request.client else None,
-            changes=changes or {},
-            reason=reason,
-        )
-    )
+async def audit(request: Request, actor: User, entity_type: str, entity_id: str, action: str, changes: dict | None = None, reason: str | None = None) -> None:
+    await AuditTrail(
+        id=str(uuid4()),
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action=action,
+        user_id=actor.id,
+        user_role=actor.role.value,
+        ip_address=request.client.host if request.client else None,
+        changes=changes or {},
+        reason=reason,
+    ).insert()
 
 
 def user_payload(user: User) -> dict:
@@ -77,8 +72,8 @@ def user_payload(user: User) -> dict:
         "is_active": bool(user.is_active),
         "email_verified": bool(getattr(user, "email_verified", False)),
         "factory_logo_url": getattr(user, "factory_logo_url", None),
-        "created_at": user.created_at.isoformat() if user.created_at else None,
-        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+        "created_at": user.created_at.isoformat() if getattr(user, "created_at", None) else None,
+        "updated_at": user.updated_at.isoformat() if getattr(user, "updated_at", None) else None,
     }
 
 
@@ -91,33 +86,34 @@ def listing_payload(item: Material) -> dict:
         "quantity": item.quantity,
         "frequency": item.frequency,
         "certificate": item.certificate,
-        "certificate_url": item.certificate_url,
-        "photo_url": item.photo_url,
-        "lab_report_url": item.lab_report_url,
-        "status": item.status,
-        "owner_id": item.owner_id,
-        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "certificate_url": getattr(item, "certificate_url", None),
+        "photo_url": getattr(item, "photo_url", None),
+        "lab_report_url": getattr(item, "lab_report_url", None),
+        "status": getattr(item, "status", None),
+        "owner_id": getattr(item, "owner_id", None),
+        "created_at": getattr(item, "created_at", None).isoformat() if getattr(item, "created_at", None) else None,
     }
 
 
 @router.get("/dashboard", response_model=SuccessResponse)
-def admin_dashboard(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    analytics = db.query(Analytics).first()
-    transactions = db.query(Transaction).all()
-    materials = db.query(Material).all()
-    users = db.query(User).all()
+async def admin_dashboard(current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    analytics = await Analytics.find_one({})
+    transactions = await Transaction.find_all().to_list()
+    materials = await Material.find_all().to_list()
+    users = await User.find_all().to_list()
     revenue = sum(float(item.amount or 0) for item in transactions)
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).replace(tzinfo=None)
     seven_days_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
-    storage_bytes = len(db.query(StoredObject).all())
+    storage_bytes = await StoredObject.find_all().count()
     listing_statuses: dict[str, int] = {}
     for item in materials:
         listing_statuses[item.status] = listing_statuses.get(item.status, 0) + 1
     active_users = len([user for user in users if user.is_active])
-    successful_matches = len([match for match in db.query(Match).all() if match.symbio_score >= AI_SETTINGS["confidence_threshold"]])
-    recent_activity = db.query(AuditTrail).order_by(desc(AuditTrail.timestamp)).limit(8).all()
-    recent_logins = db.query(AuditTrail).filter(AuditTrail.action == "admin_login").order_by(desc(AuditTrail.timestamp)).limit(6).all()
+    matches = await Match.find_all().to_list()
+    successful_matches = len([match for match in matches if getattr(match, 'symbio_score', 0) >= AI_SETTINGS["confidence_threshold"]])
+    recent_activity = await AuditTrail.find_all().sort("-timestamp").to_list()[:8]
+    recent_logins = await AuditTrail.find(AuditTrail.action == "admin_login").sort("-timestamp").to_list()[:6]
     return {
         "success": True,
         "message": "Admin dashboard loaded",
@@ -126,19 +122,19 @@ def admin_dashboard(db: Session = Depends(get_db), current_user: User = Depends(
                 "total_users": len(users),
                 "users": len(users),
                 "active_users": active_users,
-                "new_registrations": len([user for user in users if user.created_at and user.created_at >= seven_days_ago]),
+                "new_registrations": len([user for user in users if getattr(user, 'created_at', None) and user.created_at and user.created_at >= seven_days_ago]),
                 "pending_listings": listing_statuses.get("pending", 0),
                 "approved_listings": listing_statuses.get("approved", 0),
                 "rejected_listings": listing_statuses.get("rejected", 0),
                 "listings": len(materials),
-                "pending_ai_matches": len([match for match in db.query(Match).all() if match.symbio_score < AI_SETTINGS["confidence_threshold"]]),
+                "pending_ai_matches": len([match for match in matches if getattr(match, 'symbio_score', 0) < AI_SETTINGS["confidence_threshold"]]),
                 "successful_matches": successful_matches,
-                "matches": len(db.query(Match).all()),
+                "matches": len(matches),
                 "marketplace_revenue": float(revenue),
                 "revenue": float(revenue),
                 "carbon_saved": float(getattr(analytics, "co2_avoided", 0) or 0),
-                "transactions_today": len([item for item in transactions if item.created_at and item.created_at >= today]),
-                "storage_usage": storage_bytes,
+                "transactions_today": len([item for item in transactions if getattr(item, 'created_at', None) and item.created_at and item.created_at >= today]),
+                "storage_usage": int(storage_bytes or 0),
                 "server_status": "healthy",
                 "database_status": "healthy",
                 "api_health": "operational",
@@ -146,10 +142,10 @@ def admin_dashboard(db: Session = Depends(get_db), current_user: User = Depends(
             "charts": {
                 "users_by_role": [{"label": role.value, "value": len([user for user in users if user.role == role])} for role in UserRole],
                 "listings_by_status": [{"label": key or "unknown", "value": value} for key, value in listing_statuses.items()],
-                "revenue_heatmap": [{"label": item.partner_name, "value": float(item.amount)} for item in sorted(transactions, key=lambda item: item.amount or 0, reverse=True)[:8]],
+                "revenue_heatmap": [{"label": item.partner_name, "value": float(item.amount)} for item in sorted(transactions, key=lambda item: getattr(item, 'amount', 0) or 0, reverse=True)[:8]],
             },
-            "recent_activities": [{"action": item.action, "entity": item.entity_type, "actor_role": item.user_role, "at": item.timestamp.isoformat() if item.timestamp else None} for item in recent_activity],
-            "recent_logins": [{"actor": item.user_id, "at": item.timestamp.isoformat() if item.timestamp else None, "ip": item.ip_address} for item in recent_logins],
+            "recent_activities": [{"action": item.action, "entity": item.entity_type, "actor_role": item.user_role, "at": getattr(item, 'timestamp', None).isoformat() if getattr(item, 'timestamp', None) else None} for item in recent_activity],
+            "recent_logins": [{"actor": item.user_id, "at": getattr(item, 'timestamp', None).isoformat() if getattr(item, 'timestamp', None) else None, "ip": item.ip_address} for item in recent_logins],
             "system_alerts": [
                 {"severity": "info", "message": "RBAC enforced on all admin APIs"},
                 {"severity": "warning" if not settings.SMTP_HOST else "info", "message": "SMTP configured" if settings.SMTP_HOST else "SMTP not configured"},
@@ -159,22 +155,24 @@ def admin_dashboard(db: Session = Depends(get_db), current_user: User = Depends(
     }
 
 @router.get("/users", response_model=SuccessResponse)
-def list_users(q: str = "", role: str = "", status: str = "", db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
-    require_admin(current_user)
-    query = db.query(User)
+async def list_users(q: str = "", role: str = "", status: str = "", current_user: User = Depends(get_current_user)) -> Any:
+    await require_admin(current_user)
+    users_query = User.find_all()
+    users = await users_query.to_list()
     if q:
-        like = f"%{q.strip()}%"
-        query = query.filter(or_(User.email.ilike(like), User.full_name.ilike(like)))
+        q_lower = q.strip().lower()
+        users = [u for u in users if q_lower in getattr(u, 'email', '').lower() or q_lower in getattr(u, 'full_name', '').lower()]
     if role:
         try:
-            query = query.filter(User.role == UserRole(role))
+            desired_role = UserRole(role)
+            users = [u for u in users if u.role == desired_role]
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid role")
     if status == "active":
-        query = query.filter(User.is_active == True)
+        users = [u for u in users if u.is_active]
     if status == "suspended":
-        query = query.filter(User.is_active == False)
-    users = query.order_by(User.created_at.desc()).all()
+        users = [u for u in users if not u.is_active]
+    users = sorted(users, key=lambda u: getattr(u, 'created_at', None) or datetime.min, reverse=True)
     return {"success": True, "message": "Users loaded", "data": {"users": [user_payload(user) for user in users]}}
 
 
