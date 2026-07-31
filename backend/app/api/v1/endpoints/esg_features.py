@@ -53,7 +53,7 @@ async def get_carbon_footprints(
 
 
 @router.post("/esg-score", response_model=ESGScoreResponse)
-async async def create_esg_score(
+async def create_esg_score(
     score: ESGScoreCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
