@@ -1,23 +1,27 @@
-from sqlalchemy import Column, String, Float, DateTime, Text
-from sqlalchemy.sql import func
-from app.db.session import Base
+from datetime import datetime
+from typing import Optional
+from uuid import uuid4
+from beanie import Document, Indexed
+from pydantic import Field
 
 
-class Material(Base):
-    __tablename__ = "materials"
+class Material(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    name: str
+    chemical_composition: str
+    physical_state: str
+    quantity: str
+    frequency: str
+    certificate: str
+    certificate_url: Optional[str] = Field(default=None)
+    photo_url: Optional[str] = Field(default=None)
+    lab_report_url: Optional[str] = Field(default=None)
+    storage_provider: Optional[str] = Field(default=None)
+    owner_id: Optional[str] = Field(default=None)
+    status: str = Field(default="pending")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    chemical_composition = Column(Text, nullable=False)
-    physical_state = Column(String, nullable=False)
-    quantity = Column(String, nullable=False)
-    frequency = Column(String, nullable=False)
-    certificate = Column(String, nullable=False)
-    certificate_url = Column(String, nullable=True)
-    photo_url = Column(String, nullable=True)
-    lab_report_url = Column(String, nullable=True)
-    storage_provider = Column(String, nullable=True)
-    owner_id = Column(String, nullable=True)
-    status = Column(String, default="pending")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    class Settings:
+        collection = "materials"
+

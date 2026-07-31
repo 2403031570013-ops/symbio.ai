@@ -1,7 +1,31 @@
-﻿import { Download } from 'lucide-react';
+﻿import { useEffect, useState } from 'react';
+import { Download } from 'lucide-react';
 import PageHeader from '../components/ui/PageHeader';
 import ChartCard from '../components/ui/ChartCard';
-import { analyticsBreakdown, dashboardStats, sustainabilitySeries } from '../services/dummyData';
+import api from '../services/api';
+import { getApiError, unwrapData } from '../services/response';
+
+const fallbackDashboardStats = [
+  { label: 'Revenue Generated', value: '$0', trend: 'No analytics yet' },
+  { label: 'CO₂ Avoided', value: '0 t', trend: 'No analytics yet' },
+  { label: 'Landfill Diversion', value: '0 t', trend: 'No analytics yet' },
+  { label: 'Active AI Matches', value: '0', trend: 'No analytics yet' },
+];
+
+const fallbackSustainabilitySeries = [
+  { month: 'Jan', value: 10 },
+  { month: 'Feb', value: 12 },
+  { month: 'Mar', value: 14 },
+  { month: 'Apr', value: 16 },
+  { month: 'May', value: 18 },
+  { month: 'Jun', value: 20 },
+];
+
+const fallbackAnalyticsBreakdown = [
+  { label: 'Revenue', value: 0 },
+  { label: 'CO₂', value: 0 },
+  { label: 'Circularity', value: 0 },
+];
 
 function downloadFile(filename, content, type) {
   const blob = new Blob([content], { type });
@@ -16,6 +40,50 @@ function downloadFile(filename, content, type) {
 }
 
 export default function EsgAnalyticsPage() {
+  const [analytics, setAnalytics] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    api.get('/analytics/dashboard')
+      .then((response) => {
+        if (!active) return;
+        setAnalytics(unwrapData(response)?.analytics || null);
+      })
+      .catch((requestError) => {
+        if (!active) return;
+        setError(getApiError(requestError, 'Unable to load ESG analytics'));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const dashboardStats = analytics
+    ? [
+        { label: 'Revenue Generated', value: `$${Number(analytics.revenue_generated || 0).toLocaleString()}`, trend: 'Live backend analytics' },
+        { label: 'CO₂ Avoided', value: `${Number(analytics.co2_avoided || 0).toLocaleString()} t`, trend: 'Live backend analytics' },
+        { label: 'Landfill Diversion', value: `${Number(analytics.landfill_diversion || 0).toLocaleString()} t`, trend: 'Live backend analytics' },
+        { label: 'Active AI Matches', value: `${Number(analytics.active_matches || 0).toLocaleString()}`, trend: 'Live backend analytics' },
+      ]
+    : fallbackDashboardStats;
+
+  const sustainabilitySeries = analytics
+    ? fallbackSustainabilitySeries.map((point, index) => ({
+        ...point,
+        value: Math.max(10, Math.round((Number(analytics.co2_avoided || 0) / 100) * ((index + 1) / fallbackSustainabilitySeries.length))),
+      }))
+    : fallbackSustainabilitySeries;
+
+  const analyticsBreakdown = analytics
+    ? [
+        { label: 'Revenue', value: Math.min(100, Math.round((Number(analytics.revenue_generated || 0) / 250000) * 100)) },
+        { label: 'CO₂', value: Math.min(100, Math.round(Number(analytics.co2_avoided || 0) / 15)) },
+        { label: 'Circularity', value: Math.min(100, Math.round(Number(analytics.landfill_diversion || 0) / 45)) },
+      ]
+    : fallbackAnalyticsBreakdown;
+
   const exportCsv = () => {
     const rows = [
       ['Metric', 'Value', 'Trend'],
@@ -55,6 +123,8 @@ export default function EsgAnalyticsPage() {
           </div>
         }
       />
+
+      {error ? <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div> : null}
 
       <section className="grid gap-6 lg:grid-cols-2">
         <ChartCard title="CO2 reduction" caption="Thermal and material diversion impact">

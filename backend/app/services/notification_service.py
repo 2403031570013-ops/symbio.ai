@@ -1,4 +1,5 @@
 import asyncio
+from inspect import isawaitable
 from uuid import uuid4
 
 from app.models.notification import Notification
@@ -6,6 +7,11 @@ from app.services.email_service import send_email, EmailNotConfigured
 
 
 def _run(coro):
+    if isawaitable(coro):
+        async def _awaitable_wrapper():
+            return await coro
+
+        return asyncio.run(_awaitable_wrapper())
     return asyncio.run(coro)
 
 
@@ -32,5 +38,13 @@ def create_notification(
             notification.delivered_email = True
         except EmailNotConfigured:
             notification.delivered_email = False
-    _run(notification.insert())
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        loop.create_task(notification.insert())
+    else:
+        _run(notification.insert())
     return notification

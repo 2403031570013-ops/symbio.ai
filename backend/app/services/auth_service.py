@@ -1,4 +1,5 @@
 import asyncio
+from inspect import isawaitable
 from uuid import uuid4
 
 from passlib.context import CryptContext
@@ -9,6 +10,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _run(coro):
+    if isawaitable(coro):
+        async def _awaitable_wrapper():
+            return await coro
+
+        return asyncio.run(_awaitable_wrapper())
     return asyncio.run(coro)
 
 

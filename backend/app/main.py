@@ -2,7 +2,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -12,6 +12,7 @@ from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.middleware import CacheControlMiddleware, RateLimitMiddleware
 from app.db.init_db import init_db
+from app.db.session import connect_to_mongo, close_mongo
 
 load_dotenv()
 
@@ -22,10 +23,12 @@ logger = logging.getLogger("symbioai")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.validate_production_secrets()
-    init_db()
-    logger.info("Application startup complete")
+    await connect_to_mongo()
+    await init_db()
+    logger.info("MongoDB connection established")
     yield
-    logger.info("Application shutdown complete")
+    await close_mongo()
+    logger.info("MongoDB connection closed")
 
 
 app = FastAPI(
@@ -39,7 +42,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=list(dict.fromkeys([*settings.cors_origins, settings.FRONTEND_URL.strip()])),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -70,6 +73,12 @@ async def server_error_handler(request: Request, exc):
     return JSONResponse(status_code=500, content={"success": False, "message": "Internal server error", "errors": ["Unexpected server error"]})
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception for %s", request.url.path)
+    return JSONResponse(status_code=500, content={"success": False, "message": "Internal server error", "errors": ["Unexpected server error"]})
+
+
 app.include_router(api_router, prefix="/api")
 
 
@@ -86,3 +95,4 @@ def ready() -> dict:
 @app.get("/metrics")
 def metrics() -> dict:
     return {"success": True, "message": "Metrics available", "data": {"uptime_seconds": 0, "status": "ok"}}
+

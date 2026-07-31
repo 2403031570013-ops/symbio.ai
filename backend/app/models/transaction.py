@@ -1,14 +1,18 @@
-from sqlalchemy import Column, String, Float, DateTime
-from sqlalchemy.sql import func
-from app.db.session import Base
+from datetime import datetime
+from typing import Optional
+from uuid import uuid4
+from beanie import Document
+from pydantic import Field
 
 
-class Transaction(Base):
-    __tablename__ = "transactions"
+class Transaction(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    material_id: str
+    partner_name: str
+    amount: float
+    status: str = Field(default="Pending")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    material_id = Column(String, nullable=False)
-    partner_name = Column(String, nullable=False)
-    amount = Column(Float, nullable=False)
-    status = Column(String, nullable=False, default="Pending")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    class Settings:
+        collection = "transactions"
+

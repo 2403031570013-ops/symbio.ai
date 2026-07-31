@@ -1,14 +1,42 @@
+import { useEffect, useState } from 'react';
 import { CreditCard, PackageCheck, ShieldCheck } from 'lucide-react';
 import PageHeader from '../components/ui/PageHeader';
-import { shipments } from '../services/dummyData';
+import api from '../services/api';
+import { getApiError, unwrapData } from '../services/response';
 
 export default function TransactionsPage() {
+  const [shipments, setShipments] = useState([]);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    api.get('/shipments')
+      .then((response) => {
+        if (!active) return;
+        setShipments((unwrapData(response)?.shipments || []).map((shipment, index) => ({
+          title: shipment.partner_name ? `Shipment to ${shipment.partner_name}` : `Shipment ${index + 1}`,
+          detail: shipment.status ? `Current status: ${shipment.status}` : 'Current status pending',
+          time: shipment.updated_at ? new Date(shipment.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Now',
+        })));
+      })
+      .catch((requestError) => {
+        if (!active) return;
+        setError(getApiError(requestError, 'Unable to load shipments'));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Transactions hub"
         description="Monitor shipment progress, quality verification, and payment status in real time."
       />
+
+      {error ? <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">{error}</div> : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-xl shadow-slate-950/25">
@@ -23,7 +51,7 @@ export default function TransactionsPage() {
           </div>
 
           <div className="space-y-4">
-            {shipments.map((item, index) => (
+            {shipments.length ? shipments.map((item, index) => (
               <div key={item.title} className="flex gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <div className="mt-1 h-3 w-3 rounded-full bg-emerald-400" />
                 <div className="flex-1">
@@ -35,7 +63,7 @@ export default function TransactionsPage() {
                   {index === 1 ? <p className="mt-2 text-sm text-emerald-300">Quality verification status: Approved</p> : null}
                 </div>
               </div>
-            ))}
+            )) : <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">No shipments yet. Transactions will appear here once created.</div>}
           </div>
         </div>
 

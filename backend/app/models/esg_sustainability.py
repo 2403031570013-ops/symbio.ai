@@ -1,107 +1,115 @@
-from sqlalchemy import Column, String, Float, Integer, DateTime, Text, Boolean, JSON, ForeignKey
-from sqlalchemy.sql import func
-from app.db.session import Base
+from datetime import datetime
+from typing import Optional, Dict, Any
+from uuid import uuid4
+from beanie import Document, Indexed
+from pydantic import Field
 
 
-class CarbonFootprint(Base):
-    __tablename__ = "carbon_footprints"
+class CarbonFootprint(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    factory_id: str
+    material_id: Optional[str] = Field(default=None)
+    emission_source: str
+    co2_emitted: float
+    baseline_co2: Optional[float] = Field(default=None)
+    reduction_percentage: Optional[float] = Field(default=None)
+    calculation_method: str
+    verified: bool = Field(default=False)
+    verification_date: Optional[datetime] = Field(default=None)
+    period_start: datetime
+    period_end: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    factory_id = Column(String, nullable=False)
-    material_id = Column(String, nullable=True)
-    emission_source = Column(String, nullable=False)  # production, transport, storage
-    co2_emitted = Column(Float, nullable=False)  # in kg
-    baseline_co2 = Column(Float, nullable=True)
-    reduction_percentage = Column(Float, nullable=True)
-    calculation_method = Column(String, nullable=False)
-    verified = Column(Boolean, default=False)
-    verification_date = Column(DateTime(timezone=True), nullable=True)
-    period_start = Column(DateTime(timezone=True), nullable=False)
-    period_end = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class ESGScore(Base):
-    __tablename__ = "esg_scores"
-
-    id = Column(String, primary_key=True, index=True)
-    factory_id = Column(String, nullable=False, unique=True)
-    environmental_score = Column(Float, nullable=False)  # 0-100
-    social_score = Column(Float, nullable=False)  # 0-100
-    governance_score = Column(Float, nullable=False)  # 0-100
-    overall_score = Column(Float, nullable=False)  # 0-100
-    rating = Column(String, nullable=False)  # AAA, AA, A, BBB, BB, B, CCC
-    assessment_date = Column(DateTime(timezone=True), nullable=False)
-    next_assessment_date = Column(DateTime(timezone=True), nullable=True)
-    criteria = Column(JSON, nullable=True)  # detailed scoring criteria
-    improvements = Column(JSON, nullable=True)  # suggested improvements
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    class Settings:
+        collection = "carbon_footprints"
 
 
-class SustainabilityDashboard(Base):
-    __tablename__ = "sustainability_dashboards"
+class ESGScore(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    factory_id: Indexed(str, unique=True)
+    environmental_score: float
+    social_score: float
+    governance_score: float
+    overall_score: float
+    rating: str
+    assessment_date: datetime
+    next_assessment_date: Optional[datetime] = Field(default=None)
+    criteria: Optional[Dict[str, Any]] = Field(default=None)
+    improvements: Optional[Dict[str, Any]] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    factory_id = Column(String, nullable=False)
-    total_waste_diverted = Column(Float, default=0.0)  # in kg
-    total_co2_saved = Column(Float, default=0.0)  # in kg
-    water_saved = Column(Float, default=0.0)  # in liters
-    energy_saved = Column(Float, default=0.0)  # in kWh
-    recycling_rate = Column(Float, default=0.0)  # percentage
-    circular_economy_score = Column(Float, default=0.0)  # 0-100
-    zero_waste_certified = Column(Boolean, default=False)
-    green_certifications = Column(JSON, nullable=True)  # list of certifications
-    period_start = Column(DateTime(timezone=True), nullable=False)
-    period_end = Column(DateTime(timezone=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
-
-
-class WasteImpact(Base):
-    __tablename__ = "waste_impacts"
-
-    id = Column(String, primary_key=True, index=True)
-    material_id = Column(String, nullable=False)
-    waste_type = Column(String, nullable=False)
-    environmental_impact = Column(JSON, nullable=True)  # detailed impact analysis
-    economic_value = Column(Float, nullable=False)  # potential value if recycled
-    diversion_method = Column(String, nullable=False)  # recycling, upcycling, energy recovery
-    impact_score = Column(Float, nullable=False)  # 0-100
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    class Settings:
+        collection = "esg_scores"
 
 
-class GreenCertification(Base):
-    __tablename__ = "green_certifications"
+class SustainabilityDashboard(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    factory_id: str
+    total_waste_diverted: float = Field(default=0.0)
+    total_co2_saved: float = Field(default=0.0)
+    water_saved: float = Field(default=0.0)
+    energy_saved: float = Field(default=0.0)
+    recycling_rate: float = Field(default=0.0)
+    circular_economy_score: float = Field(default=0.0)
+    zero_waste_certified: bool = Field(default=False)
+    green_certifications: Optional[Dict[str, Any]] = Field(default=None)
+    period_start: datetime
+    period_end: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    factory_id = Column(String, nullable=False)
-    certification_name = Column(String, nullable=False)
-    certification_body = Column(String, nullable=False)
-    certification_level = Column(String, nullable=True)
-    issue_date = Column(DateTime(timezone=True), nullable=False)
-    expiry_date = Column(DateTime(timezone=True), nullable=False)
-    status = Column(String, default="active")  # active, expired, suspended, pending
-    certificate_url = Column(String, nullable=True)
-    audit_score = Column(Float, nullable=True)
-    requirements = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    class Settings:
+        collection = "sustainability_dashboards"
 
 
-class CarbonCredit(Base):
-    __tablename__ = "carbon_credits"
+class WasteImpact(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    material_id: str
+    waste_type: str
+    environmental_impact: Optional[Dict[str, Any]] = Field(default=None)
+    economic_value: float
+    diversion_method: str
+    impact_score: float
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    factory_id = Column(String, nullable=False)
-    credit_amount = Column(Float, nullable=False)  # in tons CO2e
-    credit_type = Column(String, nullable=False)  # avoidance, removal
-    project_type = Column(String, nullable=False)
-    verification_status = Column(String, default="pending")  # pending, verified, rejected
-    price_per_credit = Column(Float, nullable=False)
-    total_value = Column(Float, nullable=False)
-    available_for_sale = Column(Boolean, default=True)
-    buyer_id = Column(String, nullable=True)
-    transaction_date = Column(DateTime(timezone=True), nullable=True)
-    vintage_year = Column(Integer, nullable=False)
-    registry = Column(String, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    class Settings:
+        collection = "waste_impacts"
+
+
+class GreenCertification(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    factory_id: str
+    certification_name: str
+    certification_body: str
+    certification_level: Optional[str] = Field(default=None)
+    issue_date: datetime
+    expiry_date: datetime
+    status: str = Field(default="active")
+    certificate_url: Optional[str] = Field(default=None)
+    audit_score: Optional[float] = Field(default=None)
+    requirements: Optional[Dict[str, Any]] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        collection = "green_certifications"
+
+
+class CarbonCredit(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    factory_id: str
+    credit_amount: float
+    credit_type: str
+    project_type: str
+    verification_status: str = Field(default="pending")
+    price_per_credit: float
+    total_value: float
+    available_for_sale: bool = Field(default=True)
+    buyer_id: Optional[str] = Field(default=None)
+    transaction_date: Optional[datetime] = Field(default=None)
+    vintage_year: int
+    registry: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        collection = "carbon_credits"

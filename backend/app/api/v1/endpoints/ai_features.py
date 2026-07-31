@@ -4,6 +4,7 @@ Features 1-6: AI Recommendations, Demand Forecasting, Price Forecasting,
               Predictive Maintenance, Anomaly Detection, Smart Matching
 """
 import asyncio
+from inspect import isawaitable
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
@@ -31,6 +32,11 @@ def get_db() -> None:
 
 
 def _run(coro):
+    if isawaitable(coro):
+        async def _awaitable_wrapper():
+            return await coro
+
+        return asyncio.run(_awaitable_wrapper())
     return asyncio.run(coro)
 
 

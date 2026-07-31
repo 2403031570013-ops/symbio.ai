@@ -1,14 +1,18 @@
-from sqlalchemy import Column, String, Float, DateTime
-from sqlalchemy.sql import func
-from app.db.session import Base
+from datetime import datetime
+from typing import Optional
+from uuid import uuid4
+from beanie import Document
+from pydantic import Field
 
 
-class Analytics(Base):
-    __tablename__ = "analytics"
+class Analytics(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    revenue_generated: float = Field(default=0.0)
+    co2_avoided: float = Field(default=0.0)
+    landfill_diversion: float = Field(default=0.0)
+    active_matches: float = Field(default=0.0)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    revenue_generated = Column(Float, default=0.0)
-    co2_avoided = Column(Float, default=0.0)
-    landfill_diversion = Column(Float, default=0.0)
-    active_matches = Column(Float, default=0.0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    class Settings:
+        collection = "analytics"
+

@@ -1,9 +1,8 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
-  // A failed network connection must never leave a form in a permanent loading state.
   timeout: 15000,
 });
 

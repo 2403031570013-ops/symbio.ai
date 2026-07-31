@@ -1,16 +1,20 @@
-from sqlalchemy import Column, String, Integer, Float, DateTime, Text
-from sqlalchemy.sql import func
-from app.db.session import Base
+from datetime import datetime
+from typing import Optional
+from uuid import uuid4
+from beanie import Document
+from pydantic import Field
 
 
-class Match(Base):
-    __tablename__ = "matches"
+class Match(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    material_id: str
+    partner_name: str
+    symbio_score: int
+    distance_km: float
+    carbon_savings: str
+    summary: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    material_id = Column(String, nullable=False)
-    partner_name = Column(String, nullable=False)
-    symbio_score = Column(Integer, nullable=False)
-    distance_km = Column(Float, nullable=False)
-    carbon_savings = Column(String, nullable=False)
-    summary = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    class Settings:
+        collection = "matches"
+

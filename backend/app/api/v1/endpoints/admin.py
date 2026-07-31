@@ -116,8 +116,8 @@ def admin_dashboard(db: Session = Depends(get_db), current_user: User = Depends(
         listing_statuses[item.status] = listing_statuses.get(item.status, 0) + 1
     active_users = len([user for user in users if user.is_active])
     successful_matches = len([match for match in db.query(Match).all() if match.symbio_score >= AI_SETTINGS["confidence_threshold"]])
-    recent_activity = db.query(AuditTrail).order_by(AuditTrail.timestamp.desc()).limit(8).all()
-    recent_logins = db.query(AuditTrail).filter(AuditTrail.action == "admin_login").order_by(AuditTrail.timestamp.desc()).limit(6).all()
+    recent_activity = db.query(AuditTrail).order_by(desc(AuditTrail.timestamp)).limit(8).all()
+    recent_logins = db.query(AuditTrail).filter(AuditTrail.action == "admin_login").order_by(desc(AuditTrail.timestamp)).limit(6).all()
     return {
         "success": True,
         "message": "Admin dashboard loaded",
@@ -549,7 +549,7 @@ def system_health(db: Session = Depends(get_db), current_user: User = Depends(ge
 @router.get("/logs", response_model=SuccessResponse)
 def logs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> Any:
     require_admin(current_user)
-    rows = db.query(AuditTrail).order_by(AuditTrail.timestamp.desc()).limit(100).all()
+    rows = db.query(AuditTrail).order_by(desc(AuditTrail.timestamp)).limit(100).all()
     payload = [{"id": item.id, "entity_type": item.entity_type, "entity_id": item.entity_id, "action": item.action, "actor_id": item.user_id, "actor_role": item.user_role, "at": item.timestamp.isoformat() if item.timestamp else None, "ip_address": item.ip_address, "changes": item.changes} for item in rows]
     return {"success": True, "message": "Logs loaded", "data": {"audit_logs": payload, "activity_logs": payload[:25], "security_logs": [item for item in payload if item["actor_role"] in {"Admin", "Super Admin"}]}}
 

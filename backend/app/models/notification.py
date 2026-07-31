@@ -1,19 +1,22 @@
-from sqlalchemy import Boolean, Column, DateTime, String, Text
-from sqlalchemy.sql import func
+from datetime import datetime
+from typing import Optional
+from uuid import uuid4
+from beanie import Document, Indexed
+from pydantic import Field
 
-from app.db.session import Base
 
+class Notification(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    user_id: Indexed(str)
+    category: str
+    title: str
+    message: str
+    action_url: Optional[str] = Field(default=None)
+    read: bool = Field(default=False)
+    delivered_email: bool = Field(default=False)
+    delivered_push: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-class Notification(Base):
-    __tablename__ = "notifications"
+    class Settings:
+        collection = "notifications"
 
-    id = Column(String, primary_key=True, index=True)
-    user_id = Column(String, nullable=False, index=True)
-    category = Column(String, nullable=False)
-    title = Column(String, nullable=False)
-    message = Column(Text, nullable=False)
-    action_url = Column(String, nullable=True)
-    read = Column(Boolean, nullable=False, default=False)
-    delivered_email = Column(Boolean, nullable=False, default=False)
-    delivered_push = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())

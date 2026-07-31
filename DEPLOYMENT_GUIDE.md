@@ -1,6 +1,6 @@
 # SymbioAI Deployment Guide
 
-This guide reflects the current production-ready setup: React/Vite frontend, FastAPI backend, JWT access tokens, HTTP-only refresh cookies, Google OAuth, and PostgreSQL-compatible deployment.
+This guide reflects the current production-ready setup: React/Vite frontend, FastAPI backend, JWT access tokens, HTTP-only refresh cookies, Google OAuth, and MongoDB deployment.
 
 ## Required Production Environment
 
@@ -21,10 +21,12 @@ Use `VITE_BASE_PATH=/symbio.ai/` only if deploying to GitHub Pages under that re
 Set these variables on Render, Railway, Docker, or your cloud host:
 
 ```bash
-SECRET_KEY=strong-random-production-secret
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+JWT_SECRET=strong-random-production-secret
+JWT_REFRESH_SECRET=another-strong-production-secret
+DATABASE_URL=mongodb+srv://USER:PASSWORD@HOST/DATABASE
 CORS_ORIGINS=https://YOUR_FRONTEND_DOMAIN
 GOOGLE_CLIENT_ID=YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_OAUTH_CLIENT_SECRET
 RESEND_API_KEY=YOUR_RESEND_API_KEY
 ENVIRONMENT=production
 SECURE_COOKIES=true
@@ -49,7 +51,7 @@ S3_PUBLIC_BASE_URL=
 ```
 
 Notes:
-- `SECRET_KEY` must not be `change-me-in-production`; the app refuses to start in production with the default secret.
+- `JWT_SECRET` must not be `change-me-in-production`; the app refuses to start in production with the default secret.
 - `RESEND_API_KEY`, `CORS_ORIGINS`, and `FRONTEND_URL` are required in production. Use the exact HTTPS frontend URL for the last two values.
 - `CORS_ORIGINS` accepts a comma-separated list, for example `https://app.example.com,https://www.example.com`.
 - In production, refresh cookies are sent as `Secure; HttpOnly; SameSite=None`, which is required for separate frontend/backend domains.
@@ -76,7 +78,7 @@ The backend verifies real Google ID tokens. Demo or fake Google auth is intentio
 
 ### Backend on Render
 
-1. Create a Render PostgreSQL database.
+1. Create a MongoDB Atlas database or other MongoDB host.
 2. Create a Render Web Service with:
    - Root Directory: `backend`
    - Build Command: `pip install -r requirements.txt`
@@ -106,7 +108,7 @@ The backend includes `backend/railway.toml`.
 
 1. Create a Railway project from the GitHub repository.
 2. Use `backend` as the service root if Railway does not auto-detect it.
-3. Add PostgreSQL.
+3. Add MongoDB access.
 4. Set all backend environment variables.
 5. Deploy. Railway will run:
 
@@ -121,9 +123,11 @@ From the repository root:
 ```bash
 docker build -t symbioai-backend ./backend
 docker run --rm -p 8000:8000 \
-  -e SECRET_KEY=strong-random-production-secret \
-  -e DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE \
+   -e JWT_SECRET=strong-random-production-secret \
+   -e JWT_REFRESH_SECRET=another-strong-production-secret \
+   -e DATABASE_URL=mongodb+srv://USER:PASSWORD@HOST/DATABASE \
   -e CORS_ORIGINS=https://YOUR_FRONTEND_DOMAIN \
+   -e GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_OAUTH_CLIENT_SECRET \
   -e GOOGLE_CLIENT_ID=YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com \
   -e ENVIRONMENT=production \
   -e SECURE_COOKIES=true \
@@ -207,6 +211,6 @@ Check:
 
 Do not use `*` with credentialed auth. Set exact origins in `CORS_ORIGINS`.
 
-### Database errors on production PostgreSQL
+### Database errors on production MongoDB
 
-Use the provider connection string in `DATABASE_URL`. The app normalizes `postgres://` and `postgresql://` URLs for the installed psycopg driver.
+Use the provider connection string in `DATABASE_URL`. The app expects a valid MongoDB connection string in production.

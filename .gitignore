@@ -31,3 +31,6 @@ build/
 Thumbs.db
 .vercel
 !.env.example
+
+.vercel
+.env*

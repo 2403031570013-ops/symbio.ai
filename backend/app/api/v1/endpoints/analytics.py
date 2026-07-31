@@ -1,4 +1,5 @@
 import asyncio
+from inspect import isawaitable
 from typing import Any
 from fastapi import APIRouter, Depends
 
@@ -18,6 +19,11 @@ def get_db() -> None:
 
 
 def _run(coro):
+    if isawaitable(coro):
+        async def _awaitable_wrapper():
+            return await coro
+
+        return asyncio.run(_awaitable_wrapper())
     return asyncio.run(coro)
 
 

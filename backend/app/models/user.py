@@ -1,36 +1,52 @@
-from sqlalchemy import Boolean, Column, String, Enum, DateTime, Text
-from sqlalchemy.sql import func
-from app.db.session import Base
-import enum
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+from uuid import uuid4
+
+from beanie import Document, Indexed
+from pydantic import Field
 
 
-class UserRole(str, enum.Enum):
+class UserRole(str, Enum):
     SUPER_ADMIN = "Super Admin"
     WASTE_PRODUCER = "Waste Producer"
     RAW_MATERIAL_CONSUMER = "Raw Material Consumer"
     ADMIN = "Admin"
 
 
-class User(Base):
-    __tablename__ = "users"
+class User(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
 
-    id = Column(String, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
-    full_name = Column(String, nullable=False)
-    role = Column(Enum(UserRole), nullable=False, default=UserRole.WASTE_PRODUCER)
-    is_active = Column(Boolean, default=True)
-    email_verified = Column(Boolean, default=False)
-    email_verification_token = Column(String, nullable=True)
-    password_reset_token = Column(String, nullable=True)
-    two_factor_enabled = Column(Boolean, default=False)
-    two_factor_secret = Column(String, nullable=True)
-    recovery_codes = Column(Text, nullable=True)
-    trusted_device_token = Column(String, nullable=True)
-    profile_image_url = Column(String, nullable=True)
-    factory_logo_url = Column(String, nullable=True)
-    factory_verified = Column(Boolean, default=False)
-    mobile_verified = Column(Boolean, default=False)
-    phone_number = Column(String, nullable=True, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    # Indexed field
+    email: str = Indexed(unique=True)
+
+    hashed_password: str
+    full_name: str
+
+    role: UserRole = Field(default=UserRole.WASTE_PRODUCER)
+
+    is_active: bool = Field(default=True)
+    email_verified: bool = Field(default=False)
+
+    email_verification_token: Optional[str] = Field(default=None)
+    password_reset_token: Optional[str] = Field(default=None)
+
+    two_factor_enabled: bool = Field(default=False)
+    two_factor_secret: Optional[str] = Field(default=None)
+    recovery_codes: Optional[str] = Field(default=None)
+    trusted_device_token: Optional[str] = Field(default=None)
+
+    profile_image_url: Optional[str] = Field(default=None)
+    factory_logo_url: Optional[str] = Field(default=None)
+
+    factory_verified: bool = Field(default=False)
+    mobile_verified: bool = Field(default=False)
+
+    # Removed incompatible Indexed(Optional[str])
+    phone_number: Optional[str] = Field(default=None)
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        collection = "users"

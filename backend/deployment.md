@@ -4,7 +4,7 @@
 
 1. Build the React app with `npm run build`.
 2. Deploy the generated `dist` directory to Vercel.
-3. Set the environment variable `VITE_API_URL` to the backend URL.
+3. Set the environment variable `VITE_API_URL` to the backend `/api` URL.
 
 ## Backend (Render / Railway / AWS EC2)
 
@@ -23,7 +23,7 @@
 
 - MongoDB Atlas is the target production database.
 - AWS S3 compatible storage should be configured through environment variables for uploads.
-- Redis should be used for cache invalidation and background task coordination.
+- Redis is optional for future cache/background work.
 
 ## Recovery and availability
 

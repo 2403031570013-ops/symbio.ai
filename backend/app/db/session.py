@@ -1,9 +1,12 @@
 import asyncio
 from dataclasses import dataclass
+import logging
+from inspect import isawaitable
 from typing import Any, Iterable
 
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from mongomock_motor import AsyncMongoMockClient
 
 from app.core.config import settings
 from app.models.ai_recommendations import AIRecommendation, DemandPrediction, PriceForecast
@@ -24,9 +27,23 @@ from app.models.user import User
 
 client: AsyncIOMotorClient | None = None
 database: AsyncIOMotorDatabase | None = None
+logger = logging.getLogger(__name__)
+
+
+def _append_metadata(self, *args, **kwargs):
+    return None
+
+
+if not hasattr(AsyncIOMotorClient, "append_metadata"):
+    AsyncIOMotorClient.append_metadata = _append_metadata  # type: ignore[attr-defined]
 
 
 def _run(coro):
+    if isawaitable(coro):
+        async def _awaitable_wrapper():
+            return await coro
+
+        return asyncio.run(_awaitable_wrapper())
     return asyncio.run(coro)
 
 
@@ -231,24 +248,56 @@ SessionLocal = MongoSession
 async def connect_to_mongo():
     """Connect to MongoDB using Motor and initialize Beanie."""
     global client, database
-    client = AsyncIOMotorClient(settings.MONGODB_URI)
-    database = client[settings.DATABASE_NAME]
+    try:
+        client = AsyncIOMotorClient(settings.DATABASE_URL)
+        database = client[settings.DATABASE_NAME]
+        await init_beanie(
+            database=database,
+            skip_indexes=True,
+            document_models=[
+                User, Factory, Material, Transaction, Match, Analytics,
+                AIRecommendation, DemandPrediction, PriceForecast,
+                CarbonFootprint, ESGScore, SustainabilityDashboard, WasteImpact, GreenCertification, CarbonCredit,
+                RouteOptimization, Inventory, SupplyChainVisibility, ShipmentTracking, SupplierPerformance, LogisticsCost,
+                ComplianceCheck, RiskAssessment, AuditTrail, DocumentCompliance,
+                RegulatoryUpdate,
+                DynamicPricing, SmartNotification, WorkflowAutomation, Contract, Payment, BusinessIntelligence, AnomalyDetection, PredictiveMaintenance,
+                RefreshToken, EmailOtp, MobileOtp,
+                Conversation, Message, Notification, StoredObject,
+                FraudDetection,
+            ],
+        )
+    except Exception:
+        if settings.ENVIRONMENT.lower() == "production":
+            raise
+        logger.warning("MongoDB initialization failed in non-production startup; using in-memory mock database.")
+        client = AsyncMongoMockClient()
+        database = client[settings.DATABASE_NAME]
 
-    await init_beanie(
-        database=database,
-        document_models=[
-            User, Factory, Material, Transaction, Match, Analytics,
-            AIRecommendation, DemandPrediction, PriceForecast,
-            CarbonFootprint, ESGScore, SustainabilityDashboard, WasteImpact, GreenCertification, CarbonCredit,
-            RouteOptimization, Inventory, SupplyChainVisibility, ShipmentTracking, SupplierPerformance, LogisticsCost,
-            ComplianceCheck, RiskAssessment, AuditTrail, DocumentCompliance,
-            RegulatoryUpdate,
-            DynamicPricing, SmartNotification, WorkflowAutomation, Contract, Payment, BusinessIntelligence, AnomalyDetection, PredictiveMaintenance,
-            RefreshToken, EmailOtp, MobileOtp,
-            Conversation, Message, Notification, StoredObject,
-            FraudDetection,
-        ],
-    )
+        async def _mock_command(*args, **kwargs):
+            return {"version": "0.0"}
+
+        async def _mock_list_collection_names(*args, **kwargs):
+            return []
+
+        database.command = _mock_command  # type: ignore[assignment]
+        database.list_collection_names = _mock_list_collection_names  # type: ignore[assignment]
+
+        await init_beanie(
+            database=database,
+            document_models=[
+                User, Factory, Material, Transaction, Match, Analytics,
+                AIRecommendation, DemandPrediction, PriceForecast,
+                CarbonFootprint, ESGScore, SustainabilityDashboard, WasteImpact, GreenCertification, CarbonCredit,
+                RouteOptimization, Inventory, SupplyChainVisibility, ShipmentTracking, SupplierPerformance, LogisticsCost,
+                ComplianceCheck, RiskAssessment, AuditTrail, DocumentCompliance,
+                RegulatoryUpdate,
+                DynamicPricing, SmartNotification, WorkflowAutomation, Contract, Payment, BusinessIntelligence, AnomalyDetection, PredictiveMaintenance,
+                RefreshToken, EmailOtp, MobileOtp,
+                Conversation, Message, Notification, StoredObject,
+                FraudDetection,
+            ],
+        )
 
 
 async def close_mongo():

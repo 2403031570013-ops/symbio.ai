@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, CheckCircle2, FileText, MessageSquare, Paperclip, Send, X } from 'lucide-react';
 import PageHeader from '../components/ui/PageHeader';
 import api from '../services/api';
-import { aiMatches as fallbackMatches } from '../services/dummyData';
 import { getApiError, unwrapData } from '../services/response';
 
 function normalizeMatch(match, index) {
@@ -16,6 +15,8 @@ function normalizeMatch(match, index) {
     summary: match.summary || 'AI found a compatible industrial symbiosis opportunity.',
   };
 }
+
+const fallbackMatches = [];
 
 export default function AiMatchPage() {
   const [matches, setMatches] = useState([]);
@@ -237,6 +238,7 @@ export default function AiMatchPage() {
       <section className="grid gap-6 xl:grid-cols-[1fr_0.42fr]">
         <div className="grid gap-4">
           {loading ? <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 text-slate-300">Loading AI matches...</div> : null}
+          {!loading && matches.length === 0 ? <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 text-slate-300">No AI matches yet. Upload materials to generate live recommendations.</div> : null}
           {matches.map((match) => (
             <div key={match.id} className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-xl shadow-slate-950/25">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

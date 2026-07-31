@@ -55,10 +55,6 @@ export default function FactoryVerificationPage() {
           />
         </label>
         
-        <p className="mt-3 text-xs text-slate-400">
-          📌 Temporary code for setup: <strong>654321</strong>
-        </p>
-
         {error && <p className="mt-4 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</p>}
         {message && <p className="mt-4 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{message}</p>}
         

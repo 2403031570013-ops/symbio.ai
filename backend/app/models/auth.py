@@ -1,58 +1,52 @@
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from uuid import uuid4
-
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
-from sqlalchemy.orm import relationship
-
-from app.db.session import Base
+from beanie import Document, Indexed
+from pydantic import Field
 
 
-class RefreshToken(Base):
-    __tablename__ = "refresh_tokens"
+class RefreshToken(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    user_id: str
+    token: Indexed(str, unique=True)
+    expires_at: datetime
+    revoked: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid4()))
-    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    token = Column(String, unique=True, index=True, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    revoked = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    user = relationship("User", backref="refresh_tokens")
+    class Settings:
+        collection = "refresh_tokens"
 
 
-class EmailOtp(Base):
+class EmailOtp(Document):
     """A one-time email-verification challenge. Only an HMAC of the OTP is stored."""
+    
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    email: Indexed(str)
+    otp_hash: str
+    expires_at: Indexed(datetime)
+    used_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    __tablename__ = "email_otps"
-
-    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid4()))
-    email = Column(String, nullable=False, index=True)
-    otp_hash = Column(String, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    used_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    class Settings:
+        collection = "email_otps"
 
 
-class MobileOtp(Base):
+class MobileOtp(Document):
     """A one-time mobile phone verification challenge. Only an HMAC of the OTP is stored."""
+    
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    user_id: str
+    phone_number: Indexed(str)
+    otp_hash: str
+    expires_at: Indexed(datetime)
+    used_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    __tablename__ = "mobile_otps"
-
-    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid4()))
-    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    phone_number = Column(String, nullable=False, index=True)
-    otp_hash = Column(String, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    used_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
-
-    user = relationship("User", backref="mobile_otps")
+    class Settings:
+        collection = "mobile_otps"
 
 
 def build_refresh_token_expiry(days: int) -> datetime:
     return datetime.now(timezone.utc) + timedelta(days=days)
+

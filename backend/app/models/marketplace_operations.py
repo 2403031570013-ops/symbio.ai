@@ -1,170 +1,180 @@
-from sqlalchemy import Column, String, Float, Integer, DateTime, Text, Boolean, JSON, ForeignKey
-from sqlalchemy.sql import func
-from app.db.session import Base
+from datetime import datetime
+from typing import Optional, Dict, Any
+from uuid import uuid4
+from beanie import Document, Indexed
+from pydantic import Field
 
 
-class DynamicPricing(Base):
-    __tablename__ = "dynamic_pricings"
+class DynamicPricing(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    material_id: str
+    base_price: float
+    current_price: float
+    price_change: float
+    demand_factor: float
+    supply_factor: float
+    competitor_pricing: Optional[Dict[str, Any]] = Field(default=None)
+    seasonality_factor: Optional[float] = Field(default=None)
+    urgency_factor: Optional[float] = Field(default=None)
+    algorithm: str
+    confidence_score: float
+    effective_from: datetime = Field(default_factory=datetime.utcnow)
+    effective_until: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    material_id = Column(String, nullable=False)
-    base_price = Column(Float, nullable=False)
-    current_price = Column(Float, nullable=False)
-    price_change = Column(Float, nullable=False)
-    demand_factor = Column(Float, nullable=False)
-    supply_factor = Column(Float, nullable=False)
-    competitor_pricing = Column(JSON, nullable=True)
-    seasonality_factor = Column(Float, nullable=True)
-    urgency_factor = Column(Float, nullable=True)
-    algorithm = Column(String, nullable=False)
-    confidence_score = Column(Float, nullable=False)
-    effective_from = Column(DateTime(timezone=True), server_default=func.now())
-    effective_until = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class SmartNotification(Base):
-    __tablename__ = "smart_notifications"
-
-    id = Column(String, primary_key=True, index=True)
-    user_id = Column(String, nullable=False)
-    notification_type = Column(String, nullable=False)  # match, price_alert, compliance, system
-    title = Column(String, nullable=False)
-    message = Column(Text, nullable=False)
-    priority = Column(String, default="normal")  # low, normal, high, urgent
-    status = Column(String, default="unread")  # unread, read, archived
-    action_required = Column(Boolean, default=False)
-    action_url = Column(String, nullable=True)
-    action_deadline = Column(DateTime(timezone=True), nullable=True)
-    custom_metadata = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    read_at = Column(DateTime(timezone=True), nullable=True)
+    class Settings:
+        collection = "dynamic_pricings"
 
 
-class WorkflowAutomation(Base):
-    __tablename__ = "workflow_automations"
+class SmartNotification(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    user_id: str
+    notification_type: str
+    title: str
+    message: str
+    priority: str = Field(default="normal")
+    status: str = Field(default="unread")
+    action_required: bool = Field(default=False)
+    action_url: Optional[str] = Field(default=None)
+    action_deadline: Optional[datetime] = Field(default=None)
+    custom_metadata: Optional[Dict[str, Any]] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    read_at: Optional[datetime] = Field(default=None)
 
-    id = Column(String, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    description = Column(Text, nullable=True)
-    trigger_type = Column(String, nullable=False)  # material_added, match_created, deadline_approaching
-    trigger_conditions = Column(JSON, nullable=True)
-    actions = Column(JSON, nullable=False)  # list of actions to execute
-    enabled = Column(Boolean, default=True)
-    execution_count = Column(Integer, default=0)
-    success_count = Column(Integer, default=0)
-    failure_count = Column(Integer, default=0)
-    last_executed = Column(DateTime(timezone=True), nullable=True)
-    next_execution = Column(DateTime(timezone=True), nullable=True)
-    created_by = Column(String, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
-
-
-class Contract(Base):
-    __tablename__ = "contracts"
-
-    id = Column(String, primary_key=True, index=True)
-    contract_number = Column(String, nullable=False, unique=True)
-    contract_type = Column(String, nullable=False)  # purchase, sale, service
-    party_a_id = Column(String, nullable=False)  # factory_id
-    party_b_id = Column(String, nullable=False)  # partner_id
-    material_id = Column(String, nullable=True)
-    start_date = Column(DateTime(timezone=True), nullable=False)
-    end_date = Column(DateTime(timezone=True), nullable=False)
-    value = Column(Float, nullable=False)
-    currency = Column(String, default="USD")
-    terms = Column(Text, nullable=True)
-    status = Column(String, default="draft")  # draft, active, expired, terminated, completed
-    renewal_option = Column(Boolean, default=False)
-    auto_renew = Column(Boolean, default=False)
-    document_url = Column(String, nullable=True)
-    signed_by_party_a = Column(Boolean, default=False)
-    signed_by_party_b = Column(Boolean, default=False)
-    signed_date = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    class Settings:
+        collection = "smart_notifications"
 
 
-class Payment(Base):
-    __tablename__ = "payments"
+class WorkflowAutomation(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    name: str
+    description: Optional[str] = Field(default=None)
+    trigger_type: str
+    trigger_conditions: Optional[Dict[str, Any]] = Field(default=None)
+    actions: Dict[str, Any]
+    enabled: bool = Field(default=True)
+    execution_count: int = Field(default=0)
+    success_count: int = Field(default=0)
+    failure_count: int = Field(default=0)
+    last_executed: Optional[datetime] = Field(default=None)
+    next_execution: Optional[datetime] = Field(default=None)
+    created_by: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    contract_id = Column(String, nullable=True)
-    transaction_id = Column(String, nullable=True)
-    amount = Column(Float, nullable=False)
-    currency = Column(String, default="USD")
-    payment_method = Column(String, nullable=False)  # bank_transfer, credit_card, crypto
-    status = Column(String, default="pending")  # pending, processing, completed, failed, refunded
-    payment_date = Column(DateTime(timezone=True), nullable=True)
-    due_date = Column(DateTime(timezone=True), nullable=False)
-    paid_by = Column(String, nullable=False)
-    paid_to = Column(String, nullable=False)
-    reference_number = Column(String, nullable=True)
-    invoice_number = Column(String, nullable=True)
-    transaction_fee = Column(Float, nullable=True)
-    tax_amount = Column(Float, nullable=True)
-    notes = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    class Settings:
+        collection = "workflow_automations"
 
 
-class BusinessIntelligence(Base):
-    __tablename__ = "business_intelligence"
+class Contract(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    contract_number: Indexed(str, unique=True)
+    contract_type: str
+    party_a_id: str
+    party_b_id: str
+    material_id: Optional[str] = Field(default=None)
+    start_date: datetime
+    end_date: datetime
+    value: float
+    currency: str = Field(default="USD")
+    terms: Optional[str] = Field(default=None)
+    status: str = Field(default="draft")
+    renewal_option: bool = Field(default=False)
+    auto_renew: bool = Field(default=False)
+    document_url: Optional[str] = Field(default=None)
+    signed_by_party_a: bool = Field(default=False)
+    signed_by_party_b: bool = Field(default=False)
+    signed_date: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    report_type = Column(String, nullable=False)  # sales, operations, financial, sustainability
-    report_name = Column(String, nullable=False)
-    period = Column(String, nullable=False)  # daily, weekly, monthly, quarterly, yearly
-    start_date = Column(DateTime(timezone=True), nullable=False)
-    end_date = Column(DateTime(timezone=True), nullable=False)
-    metrics = Column(JSON, nullable=True)  # key performance indicators
-    insights = Column(JSON, nullable=True)  # generated insights
-    trends = Column(JSON, nullable=True)  # trend analysis
-    comparisons = Column(JSON, nullable=True)  # period over period comparisons
-    recommendations = Column(JSON, nullable=True)
-    data_sources = Column(JSON, nullable=True)
-    generated_by = Column(String, nullable=True)  # ai, manual
-    confidence_score = Column(Float, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class AnomalyDetection(Base):
-    __tablename__ = "anomaly_detections"
-
-    id = Column(String, primary_key=True, index=True)
-    entity_type = Column(String, nullable=False)  # price, volume, behavior, pattern
-    entity_id = Column(String, nullable=False)
-    anomaly_type = Column(String, nullable=False)  # spike, drop, pattern_break, outlier
-    severity = Column(String, nullable=False)  # low, medium, high, critical
-    anomaly_score = Column(Float, nullable=False)  # 0-100
-    expected_value = Column(Float, nullable=False)
-    actual_value = Column(Float, nullable=False)
-    deviation_percentage = Column(Float, nullable=False)
-    context = Column(JSON, nullable=True)
-    detection_method = Column(String, nullable=False)
-    status = Column(String, default="flagged")  # flagged, investigating, resolved, false_positive
-    resolution = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    class Settings:
+        collection = "contracts"
 
 
-class PredictiveMaintenance(Base):
-    __tablename__ = "predictive_maintenances"
+class Payment(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    contract_id: Optional[str] = Field(default=None)
+    transaction_id: Optional[str] = Field(default=None)
+    amount: float
+    currency: str = Field(default="USD")
+    payment_method: str
+    status: str = Field(default="pending")
+    payment_date: Optional[datetime] = Field(default=None)
+    due_date: datetime
+    paid_by: str
+    paid_to: str
+    reference_number: Optional[str] = Field(default=None)
+    invoice_number: Optional[str] = Field(default=None)
+    transaction_fee: Optional[float] = Field(default=None)
+    tax_amount: Optional[float] = Field(default=None)
+    notes: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    factory_id = Column(String, nullable=False)
-    equipment_id = Column(String, nullable=False)
-    equipment_name = Column(String, nullable=False)
-    equipment_type = Column(String, nullable=False)
-    health_score = Column(Float, nullable=False)  # 0-100
-    predicted_failure_date = Column(DateTime(timezone=True), nullable=True)
-    confidence = Column(Float, nullable=False)  # 0-100
-    risk_level = Column(String, nullable=False)  # low, medium, high, critical
-    recommended_actions = Column(JSON, nullable=True)
-    sensor_data = Column(JSON, nullable=True)
-    maintenance_scheduled = Column(Boolean, default=False)
-    scheduled_date = Column(DateTime(timezone=True), nullable=True)
-    last_maintenance = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    class Settings:
+        collection = "payments"
+
+
+class BusinessIntelligence(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    report_type: str
+    report_name: str
+    period: str
+    start_date: datetime
+    end_date: datetime
+    metrics: Optional[Dict[str, Any]] = Field(default=None)
+    insights: Optional[Dict[str, Any]] = Field(default=None)
+    trends: Optional[Dict[str, Any]] = Field(default=None)
+    comparisons: Optional[Dict[str, Any]] = Field(default=None)
+    recommendations: Optional[Dict[str, Any]] = Field(default=None)
+    data_sources: Optional[Dict[str, Any]] = Field(default=None)
+    generated_by: Optional[str] = Field(default=None)
+    confidence_score: Optional[float] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        collection = "business_intelligence"
+
+
+class AnomalyDetection(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    entity_type: str
+    entity_id: str
+    anomaly_type: str
+    severity: str
+    anomaly_score: float
+    expected_value: float
+    actual_value: float
+    deviation_percentage: float
+    context: Optional[Dict[str, Any]] = Field(default=None)
+    detection_method: str
+    status: str = Field(default="flagged")
+    resolution: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    resolved_at: Optional[datetime] = Field(default=None)
+
+    class Settings:
+        collection = "anomaly_detections"
+
+
+class PredictiveMaintenance(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    factory_id: str
+    equipment_id: str
+    equipment_name: str
+    equipment_type: str
+    health_score: float
+    predicted_failure_date: Optional[datetime] = Field(default=None)
+    confidence: float
+    risk_level: str
+    recommended_actions: Optional[Dict[str, Any]] = Field(default=None)
+    sensor_data: Optional[Dict[str, Any]] = Field(default=None)
+    maintenance_scheduled: bool = Field(default=False)
+    scheduled_date: Optional[datetime] = Field(default=None)
+    last_maintenance: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        collection = "predictive_maintenances"

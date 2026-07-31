@@ -1,126 +1,135 @@
-from sqlalchemy import Column, String, Float, Integer, DateTime, Text, Boolean, JSON, ForeignKey
-from sqlalchemy.sql import func
-from app.db.session import Base
+from datetime import datetime
+from typing import Optional, List, Dict, Any
+from uuid import uuid4
+from beanie import Document
+from pydantic import Field
 
 
-class RouteOptimization(Base):
-    __tablename__ = "route_optimizations"
+class RouteOptimization(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    shipment_id: str
+    origin: str
+    destination: str
+    original_distance: float
+    optimized_distance: float
+    distance_saved: float
+    original_time: float
+    optimized_time: float
+    time_saved: float
+    original_cost: float
+    optimized_cost: float
+    cost_saved: float
+    co2_saved: float
+    route_coordinates: Optional[Dict[str, Any]] = Field(default=None)
+    optimization_algorithm: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    shipment_id = Column(String, nullable=False)
-    origin = Column(String, nullable=False)
-    destination = Column(String, nullable=False)
-    original_distance = Column(Float, nullable=False)  # in km
-    optimized_distance = Column(Float, nullable=False)  # in km
-    distance_saved = Column(Float, nullable=False)  # in km
-    original_time = Column(Float, nullable=False)  # in hours
-    optimized_time = Column(Float, nullable=False)  # in hours
-    time_saved = Column(Float, nullable=False)  # in hours
-    original_cost = Column(Float, nullable=False)
-    optimized_cost = Column(Float, nullable=False)
-    cost_saved = Column(Float, nullable=False)
-    co2_saved = Column(Float, nullable=False)  # in kg
-    route_coordinates = Column(JSON, nullable=True)
-    optimization_algorithm = Column(String, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class Inventory(Base):
-    __tablename__ = "inventories"
-
-    id = Column(String, primary_key=True, index=True)
-    factory_id = Column(String, nullable=False)
-    material_id = Column(String, nullable=False)
-    current_stock = Column(Float, nullable=False)
-    minimum_stock = Column(Float, nullable=False)
-    maximum_stock = Column(Float, nullable=False)
-    reorder_point = Column(Float, nullable=False)
-    reorder_quantity = Column(Float, nullable=False)
-    stock_status = Column(String, default="normal")  # normal, low, critical, overstocked
-    last_restock_date = Column(DateTime(timezone=True), nullable=True)
-    next_restock_date = Column(DateTime(timezone=True), nullable=True)
-    turnover_rate = Column(Float, nullable=True)
-    holding_cost = Column(Float, nullable=True)
-    stockout_count = Column(Integer, default=0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    class Settings:
+        collection = "route_optimizations"
 
 
-class SupplyChainVisibility(Base):
-    __tablename__ = "supply_chain_visibilities"
+class Inventory(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    factory_id: str
+    material_id: str
+    current_stock: float
+    minimum_stock: float
+    maximum_stock: float
+    reorder_point: float
+    reorder_quantity: float
+    stock_status: str = Field(default="normal")
+    last_restock_date: Optional[datetime] = Field(default=None)
+    next_restock_date: Optional[datetime] = Field(default=None)
+    turnover_rate: Optional[float] = Field(default=None)
+    holding_cost: Optional[float] = Field(default=None)
+    stockout_count: int = Field(default=0)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    material_id = Column(String, nullable=False)
-    supply_chain_stage = Column(String, nullable=False)  # raw_material, manufacturing, distribution, retail
-    supplier_id = Column(String, nullable=False)
-    location = Column(String, nullable=False)
-    status = Column(String, nullable=False)  # active, delayed, blocked, completed
-    estimated_arrival = Column(DateTime(timezone=True), nullable=True)
-    actual_arrival = Column(DateTime(timezone=True), nullable=True)
-    delay_reason = Column(Text, nullable=True)
-    risk_level = Column(String, default="low")  # low, medium, high, critical
-    alternative_suppliers = Column(JSON, nullable=True)
-    tracking_number = Column(String, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
-
-
-class ShipmentTracking(Base):
-    __tablename__ = "shipment_trackings"
-
-    id = Column(String, primary_key=True, index=True)
-    shipment_id = Column(String, nullable=False)
-    current_location = Column(String, nullable=False)
-    destination = Column(String, nullable=False)
-    status = Column(String, nullable=False)  # in_transit, delivered, delayed, cancelled
-    estimated_delivery = Column(DateTime(timezone=True), nullable=False)
-    actual_delivery = Column(DateTime(timezone=True), nullable=True)
-    carrier = Column(String, nullable=False)
-    tracking_events = Column(JSON, nullable=True)  # list of tracking events
-    temperature = Column(JSON, nullable=True)  # for sensitive materials
-    humidity = Column(JSON, nullable=True)
-    condition = Column(String, default="good")  # good, damaged, spoiled
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    class Settings:
+        collection = "inventories"
 
 
-class SupplierPerformance(Base):
-    __tablename__ = "supplier_performances"
+class SupplyChainVisibility(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    material_id: str
+    supply_chain_stage: str
+    supplier_id: str
+    location: str
+    status: str
+    estimated_arrival: Optional[datetime] = Field(default=None)
+    actual_arrival: Optional[datetime] = Field(default=None)
+    delay_reason: Optional[str] = Field(default=None)
+    risk_level: str = Field(default="low")
+    alternative_suppliers: Optional[Dict[str, Any]] = Field(default=None)
+    tracking_number: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    supplier_id = Column(String, nullable=False)
-    factory_id = Column(String, nullable=False)
-    on_time_delivery_rate = Column(Float, nullable=False)  # percentage
-    quality_score = Column(Float, nullable=False)  # 0-100
-    response_time = Column(Float, nullable=False)  # in hours
-    price_competitiveness = Column(Float, nullable=False)  # 0-100
-    communication_score = Column(Float, nullable=False)  # 0-100
-    overall_score = Column(Float, nullable=False)  # 0-100
-    rating = Column(String, nullable=False)  # excellent, good, average, poor
-    total_orders = Column(Integer, default=0)
-    total_deliveries = Column(Integer, default=0)
-    delayed_deliveries = Column(Integer, default=0)
-    quality_issues = Column(Integer, default=0)
-    assessment_period = Column(String, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    class Settings:
+        collection = "supply_chain_visibilities"
 
 
-class LogisticsCost(Base):
-    __tablename__ = "logistics_costs"
+class ShipmentTracking(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    shipment_id: str
+    current_location: str
+    destination: str
+    status: str
+    estimated_delivery: datetime
+    actual_delivery: Optional[datetime] = Field(default=None)
+    carrier: str
+    tracking_events: Optional[Dict[str, Any]] = Field(default=None)
+    temperature: Optional[Dict[str, Any]] = Field(default=None)
+    humidity: Optional[Dict[str, Any]] = Field(default=None)
+    condition: str = Field(default="good")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id = Column(String, primary_key=True, index=True)
-    shipment_id = Column(String, nullable=False)
-    cost_category = Column(String, nullable=False)  # transportation, storage, handling, insurance
-    base_cost = Column(Float, nullable=False)
-    fuel_surcharge = Column(Float, nullable=True)
-    handling_fee = Column(Float, nullable=True)
-    insurance_cost = Column(Float, nullable=True)
-    total_cost = Column(Float, nullable=False)
-    cost_per_unit = Column(Float, nullable=False)
-    cost_per_km = Column(Float, nullable=True)
-    currency = Column(String, default="USD")
-    budget = Column(Float, nullable=True)
-    variance = Column(Float, nullable=True)
-    variance_percentage = Column(Float, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    class Settings:
+        collection = "shipment_trackings"
+
+
+class SupplierPerformance(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    supplier_id: str
+    factory_id: str
+    on_time_delivery_rate: float
+    quality_score: float
+    response_time: float
+    price_competitiveness: float
+    communication_score: float
+    overall_score: float
+    rating: str
+    total_orders: int = Field(default=0)
+    total_deliveries: int = Field(default=0)
+    delayed_deliveries: int = Field(default=0)
+    quality_issues: int = Field(default=0)
+    assessment_period: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        collection = "supplier_performances"
+
+
+class LogisticsCost(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+    shipment_id: str
+    cost_category: str
+    base_cost: float
+    fuel_surcharge: Optional[float] = Field(default=None)
+    handling_fee: Optional[float] = Field(default=None)
+    insurance_cost: Optional[float] = Field(default=None)
+    total_cost: float
+    cost_per_unit: float
+    cost_per_km: Optional[float] = Field(default=None)
+    currency: str = Field(default="USD")
+    budget: Optional[float] = Field(default=None)
+    variance: Optional[float] = Field(default=None)
+    variance_percentage: Optional[float] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        collection = "logistics_costs"
+

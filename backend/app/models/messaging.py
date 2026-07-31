@@ -1,37 +1,50 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.sql import func
+from datetime import datetime
+from typing import Optional
+from uuid import uuid4
 
-from app.db.session import Base
-
-
-class Conversation(Base):
-    __tablename__ = "conversations"
-
-    id = Column(String, primary_key=True, index=True)
-    match_id = Column(String, nullable=True, index=True)
-    material_name = Column(String, nullable=False)
-    partner_name = Column(String, nullable=False)
-    buyer_id = Column(String, nullable=True, index=True)
-    seller_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    status = Column(String, nullable=False, default="negotiating")
-    unread_count = Column(Integer, nullable=False, default=0)
-    last_message_at = Column(DateTime(timezone=True), server_default=func.now())
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+from beanie import Document
+from pydantic import Field
 
 
-class Message(Base):
-    __tablename__ = "messages"
+class Conversation(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
 
-    id = Column(String, primary_key=True, index=True)
-    conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False, index=True)
-    sender_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    sender_name = Column(String, nullable=False)
-    message_type = Column(String, nullable=False, default="text")
-    body = Column(Text, nullable=False)
-    attachment_name = Column(String, nullable=True)
-    attachment_type = Column(String, nullable=True)
-    offer_amount = Column(String, nullable=True)
-    offer_status = Column(String, nullable=True)
-    is_read = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    match_id: Optional[str] = Field(default=None)
+    material_name: str
+    partner_name: str
+
+    buyer_id: Optional[str] = Field(default=None)
+    seller_id: str
+
+    status: str = Field(default="negotiating")
+    unread_count: int = Field(default=0)
+
+    last_message_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        collection = "conversations"
+
+
+class Message(Document):
+    id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
+
+    conversation_id: str
+    sender_id: str
+    sender_name: str
+
+    message_type: str = Field(default="text")
+    body: str
+
+    attachment_name: Optional[str] = Field(default=None)
+    attachment_type: Optional[str] = Field(default=None)
+
+    offer_amount: Optional[str] = Field(default=None)
+    offer_status: Optional[str] = Field(default=None)
+
+    is_read: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Settings:
+        collection = "messages"
