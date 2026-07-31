@@ -164,8 +164,8 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 
 
 @router.post("/register", response_model=SuccessResponse)
-def register(user_in: UserCreate, response: Response, db: Session = Depends(get_db)) -> Any:
-    existing = _run(User.find_one({"email": user_in.email}))
+async def register(user_in: UserCreate, response: Response, db: Session = Depends(get_db)) -> Any:
+    existing = await User.find_one({"email": user_in.email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     if user_in.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
@@ -182,7 +182,7 @@ def register(user_in: UserCreate, response: Response, db: Session = Depends(get_
         email_verified=False,
         mobile_verified=False,
     )
-    _run(user.insert())
+    await user.insert()
     logger.info("Registered user %s", user.email)
     try:
         send_welcome_email(user.email, user.full_name)
@@ -190,7 +190,7 @@ def register(user_in: UserCreate, response: Response, db: Session = Depends(get_
         logger.info("SMTP not configured; skipped welcome email for %s", user.email)
 
     token = create_access_token(user.email)
-    refresh_token = _run(_issue_refresh_token(user))
+    refresh_token = await _issue_refresh_token(user)
     _set_refresh_cookie(response, refresh_token)
 
     return {
@@ -201,10 +201,10 @@ def register(user_in: UserCreate, response: Response, db: Session = Depends(get_
 
 
 @router.post("/send-otp", response_model=SuccessResponse, responses={429: {"model": ErrorResponse}})
-def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
+async def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
     """Issue a rate-limited, five-minute verification OTP through Resend."""
     email = str(payload.email).strip().lower()
-    user = _run(User.find_one({"email": email}))
+    user = await User.find_one({"email": email})
     if not user:
         # Do not turn this endpoint into an account-enumeration oracle.
         return {"success": True, "message": "If the account exists, a verification code has been sent.", "data": {"cooldown_seconds": 60}}
@@ -212,13 +212,13 @@ def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
         return {"success": True, "message": "Email is already verified.", "data": {"verified": True}}
 
     now = _now_utc_naive()
-    latest = _run(EmailOtp.find({"email": email}).sort("-created_at").first_or_none())
+    latest = await EmailOtp.find({"email": email}).sort("-created_at").first_or_none()
     latest_created_at = _as_utc_naive(latest.created_at) if latest and latest.created_at else None
     if latest_created_at and (now - latest_created_at).total_seconds() < 60:
         remaining = max(1, 60 - int((now - latest_created_at).total_seconds()))
         raise HTTPException(status_code=429, detail=f"Please wait {remaining} seconds before requesting another code")
 
-    request_count = _run(EmailOtp.find({"email": email, "created_at": {"$gte": now - timedelta(hours=1)}}).count())
+    request_count = await EmailOtp.find({"email": email, "created_at": {"$gte": now - timedelta(hours=1)}}).count()
     if request_count >= 5:
         raise HTTPException(status_code=429, detail="Verification request limit reached. Try again in one hour.")
 
@@ -232,7 +232,7 @@ def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
     try:
         # Commit only after the provider accepts the email; failed sends do not consume a quota slot.
         send_resend_verification_otp(email, otp)
-        _run(challenge.insert())
+        await challenge.insert()
     except EmailNotConfigured:
         logger.error("OTP requested but Resend is not configured")
         raise HTTPException(status_code=503, detail="Email verification is temporarily unavailable")
@@ -247,7 +247,7 @@ def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
 
 
 @router.post("/verify-otp", response_model=SuccessResponse)
-def verify_otp(payload: OtpVerification, db: Session = Depends(get_db)) -> Any:
+async def verify_otp(payload: OtpVerification, db: Session = Depends(get_db)) -> Any:
     """Validate an unused OTP and mark the associated account email as verified."""
     email = str(payload.email).strip().lower()
     otp = payload.otp.strip()
@@ -255,21 +255,21 @@ def verify_otp(payload: OtpVerification, db: Session = Depends(get_db)) -> Any:
         raise HTTPException(status_code=400, detail="OTP must be a 6-digit code")
 
     now = _now_utc_naive()
-    challenge = _run(EmailOtp.find({"email": email, "used_at": None}).sort("-created_at").first_or_none())
+    challenge = await EmailOtp.find({"email": email, "used_at": None}).sort("-created_at").first_or_none()
     if not challenge or _as_utc_naive(challenge.expires_at) <= now:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
     if not hmac.compare_digest(challenge.otp_hash, _otp_digest(otp)):
         logger.warning("Invalid email OTP submitted for %s", email)
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
-    user = _run(User.find_one({"email": email}))
+    user = await User.find_one({"email": email})
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
     challenge.used_at = now
     user.email_verified = True
     user.email_verification_token = None
-    _run(challenge.save())
-    _run(user.save())
+    await challenge.save()
+    await user.save()
     logger.info("Email verified with OTP for %s", email)
     return {"success": True, "message": "Email verified successfully.", "data": {"verified": True}}
 
@@ -288,9 +288,9 @@ def verify_factory(payload: FactoryVerification, db: Session = Depends(get_db)) 
 
 
 @router.post("/send-mobile-otp", response_model=SuccessResponse, responses={429: {"model": ErrorResponse}})
-def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_db)) -> Any:
+async def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_db)) -> Any:
     """Issue a rate-limited mobile phone verification OTP."""
-    user = _run(User.find_one({"_id": payload.user_id}))
+    user = await User.find_one({"_id": payload.user_id})
     if not user:
         return {"success": True, "message": "If the account exists, a verification code has been sent.", "data": {"cooldown_seconds": 60}}
     
@@ -302,13 +302,13 @@ def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_db)) ->
         return {"success": True, "message": "Phone is already verified.", "data": {"verified": True}}
     
     now = _now_utc_naive()
-    latest = _run(MobileOtp.find({"user_id": payload.user_id, "phone_number": phone_number}).sort("-created_at").first_or_none())
+    latest = await MobileOtp.find({"user_id": payload.user_id, "phone_number": phone_number}).sort("-created_at").first_or_none()
     latest_created_at = _as_utc_naive(latest.created_at) if latest and latest.created_at else None
     if latest_created_at and (now - latest_created_at).total_seconds() < 60:
         remaining = max(1, 60 - int((now - latest_created_at).total_seconds()))
         raise HTTPException(status_code=429, detail=f"Please wait {remaining} seconds before requesting another code")
     
-    request_count = _run(MobileOtp.find({"user_id": payload.user_id, "created_at": {"$gte": now - timedelta(hours=1)}}).count())
+    request_count = await MobileOtp.find({"user_id": payload.user_id, "created_at": {"$gte": now - timedelta(hours=1)}}).count()
     if request_count >= 5:
         raise HTTPException(status_code=429, detail="Verification request limit reached. Try again in one hour.")
     
@@ -320,29 +320,29 @@ def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_db)) ->
         otp_hash=_otp_digest(otp),
         expires_at=now + timedelta(minutes=5),
     )
-    _run(mobile_challenge.insert())
+    await mobile_challenge.insert()
     
     # Development uses deterministic OTPs; production should plug in an SMS provider.
     
     user.phone_number = phone_number
-    _run(user.save())
+    await user.save()
     
     return {"success": True, "message": "Verification code sent. It expires in 5 minutes.", "data": {"cooldown_seconds": 60, "expires_in_seconds": 300}}
 
 
 @router.post("/verify-mobile", response_model=SuccessResponse)
-def verify_mobile(payload: MobileOtpVerification, db: Session = Depends(get_db)) -> Any:
+async def verify_mobile(payload: MobileOtpVerification, db: Session = Depends(get_db)) -> Any:
     """Validate mobile OTP and mark the phone as verified."""
     otp = payload.otp.strip()
     if len(otp) != 6 or not otp.isdigit():
         raise HTTPException(status_code=400, detail="OTP must be a 6-digit code")
     
-    user = _run(User.find_one({"_id": payload.user_id}))
+    user = await User.find_one({"_id": payload.user_id})
     if not user:
         raise HTTPException(status_code=400, detail="User not found")
     
     now = _now_utc_naive()
-    challenge = _run(MobileOtp.find({"user_id": payload.user_id, "used_at": None}).sort("-created_at").first_or_none())
+    challenge = await MobileOtp.find({"user_id": payload.user_id, "used_at": None}).sort("-created_at").first_or_none()
     
     if not challenge or _as_utc_naive(challenge.expires_at) <= now:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
@@ -353,21 +353,21 @@ def verify_mobile(payload: MobileOtpVerification, db: Session = Depends(get_db))
     
     challenge.used_at = now
     user.mobile_verified = True
-    _run(challenge.save())
-    _run(user.save())
+    await challenge.save()
+    await user.save()
     
     logger.info("Mobile verified with OTP for user %s", payload.user_id)
     return {"success": True, "message": "Mobile verified successfully.", "data": {"verified": True}}
 
 
 @router.post("/login", response_model=SuccessResponse)
-def login(user_in: UserLogin, response: Response, db: Session = Depends(get_db)) -> Any:
-    user = _run(User.find_one({"email": user_in.email}))
+async def login(user_in: UserLogin, response: Response, db: Session = Depends(get_db)) -> Any:
+    user = await User.find_one({"email": user_in.email})
     if not user or not verify_password(user_in.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token(user.email)
-    refresh_token = _run(_issue_refresh_token(user))
+    refresh_token = await _issue_refresh_token(user)
     _set_refresh_cookie(response, refresh_token)
     logger.info("Authenticated user %s", user.email)
     return {
@@ -378,8 +378,8 @@ def login(user_in: UserLogin, response: Response, db: Session = Depends(get_db))
 
 
 @router.post("/admin-login", response_model=SuccessResponse)
-def admin_login(user_in: UserLogin, response: Response, request: Request = None, db: Session = Depends(get_db)) -> Any:
-    user = _run(User.find_one({"email": user_in.email}))
+async def admin_login(user_in: UserLogin, response: Response, request: Request = None, db: Session = Depends(get_db)) -> Any:
+    user = await User.find_one({"email": user_in.email})
     if not user or not verify_password(user_in.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid admin credentials")
     if user.role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
@@ -389,9 +389,9 @@ def admin_login(user_in: UserLogin, response: Response, request: Request = None,
         raise HTTPException(status_code=202, detail={"two_factor_required": True, "email": user.email})
 
     token = create_access_token(user.email)
-    refresh_token = _run(_issue_refresh_token(user))
+    refresh_token = await _issue_refresh_token(user)
     _set_refresh_cookie(response, refresh_token)
-    _run(AuditTrail(
+    await AuditTrail(
         id=str(uuid4()),
         entity_type="admin_session",
         entity_id=user.id,
@@ -400,7 +400,7 @@ def admin_login(user_in: UserLogin, response: Response, request: Request = None,
         user_role=user.role.value,
         ip_address=request.client.host if request and request.client else None,
         changes={},
-    ).insert())
+    ).insert()
     logger.info("Authenticated admin %s", user.email)
     return {
         "success": True,
@@ -410,7 +410,7 @@ def admin_login(user_in: UserLogin, response: Response, request: Request = None,
 
 
 @router.post("/google", response_model=SuccessResponse)
-def google_login(payload: dict, response: Response, db: Session = Depends(get_db)) -> Any:
+async def google_login(payload: dict, response: Response, db: Session = Depends(get_db)) -> Any:
     credential: str = (payload.get("credential") or "").strip()
     email: Optional[str] = None
     full_name: Optional[str] = None
@@ -435,10 +435,10 @@ def google_login(payload: dict, response: Response, db: Session = Depends(get_db
     if not email:
         raise HTTPException(status_code=400, detail="A valid Google credential is required")
 
-    user = _run(User.find_one({"email": email}))
+    user = await User.find_one({"email": email})
     if user and full_name and user.full_name != full_name:
         user.full_name = full_name
-        _run(user.save())
+        await user.save()
     if not user:
         user = User(
             id=str(uuid4()),
@@ -447,10 +447,10 @@ def google_login(payload: dict, response: Response, db: Session = Depends(get_db
             hashed_password=get_password_hash(secrets.token_urlsafe(24)),
             role=UserRole.RAW_MATERIAL_CONSUMER,
         )
-        _run(user.insert())
+        await user.insert()
 
     token = create_access_token(user.email)
-    refresh_token = _run(_issue_refresh_token(user))
+    refresh_token = await _issue_refresh_token(user)
     _set_refresh_cookie(response, refresh_token)
     logger.info("Authenticated Google user %s", user.email)
     return {
@@ -461,14 +461,14 @@ def google_login(payload: dict, response: Response, db: Session = Depends(get_db
 
 
 @router.post("/forgot-password", response_model=SuccessResponse)
-def forgot_password(payload: dict) -> Any:
+async def forgot_password(payload: dict) -> Any:
     email = (payload.get("email") or "").strip()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
-    user = _run(User.find_one({"email": email}))
+    user = await User.find_one({"email": email})
     if user:
         user.password_reset_token = secrets.token_urlsafe(32)
-        _run(user.save())
+        await user.save()
         try:
             send_password_reset_email(user.email, user.password_reset_token)
         except EmailNotConfigured:
@@ -478,45 +478,45 @@ def forgot_password(payload: dict) -> Any:
 
 
 @router.post("/reset-password", response_model=SuccessResponse)
-def reset_password(payload: dict, db: Session = Depends(get_db)) -> Any:
+async def reset_password(payload: dict, db: Session = Depends(get_db)) -> Any:
     token = (payload.get("token") or "").strip()
     password = (payload.get("password") or "").strip()
     if not token or len(password) < 8:
         raise HTTPException(status_code=400, detail="Valid reset token and password are required")
-    user = _run(User.find_one({"password_reset_token": token}))
+    user = await User.find_one({"password_reset_token": token})
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
     user.hashed_password = get_password_hash(password)
     user.password_reset_token = None
-    _run(user.save())
+    await user.save()
     return {"success": True, "message": "Password reset successful", "data": {}}
 
 
 @router.post("/verify-email", response_model=SuccessResponse)
-def verify_email(payload: dict) -> Any:
+async def verify_email(payload: dict) -> Any:
     token = (payload.get("token") or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="Verification token is required")
-    user = _run(User.find_one({"email_verification_token": token}))
+    user = await User.find_one({"email_verification_token": token})
     if not user:
         raise HTTPException(status_code=400, detail="Invalid verification token")
     user.email_verified = True
     user.email_verification_token = None
-    _run(user.save())
+    await user.save()
     return {"success": True, "message": "Email verified", "data": {"verified": True}}
 
 @router.post("/logout", response_model=SuccessResponse)
-def logout(
+async def logout(
     response: Response,
     refresh_token: Optional[str] = Cookie(default=None, alias="symbioai_refresh_token"),
     db: Session = Depends(get_db),
 ) -> Any:
     is_secure_cookie = settings.SECURE_COOKIES or settings.ENVIRONMENT.lower() == "production"
     if refresh_token:
-        token_obj = _run(RefreshToken.find_one({"token": refresh_token, "revoked": False}))
+        token_obj = await RefreshToken.find_one({"token": refresh_token, "revoked": False})
         if token_obj:
             token_obj.revoked = True
-            _run(token_obj.save())
+            await token_obj.save()
     response.delete_cookie(
         "symbioai_refresh_token",
         path="/api/auth",
@@ -532,7 +532,7 @@ def me(current_user: User = Depends(get_current_user)) -> Any:
 
 
 @router.post("/refresh", response_model=SuccessResponse, responses={401: {"model": ErrorResponse}})
-def refresh_access_token(
+async def refresh_access_token(
     response: Response,
     refresh_token: Optional[str] = Cookie(default=None, alias="symbioai_refresh_token"),
     db: Session = Depends(get_db),
@@ -540,17 +540,17 @@ def refresh_access_token(
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token missing")
 
-    token_obj = _run(RefreshToken.find_one({"token": refresh_token, "revoked": False}))
+    token_obj = await RefreshToken.find_one({"token": refresh_token, "revoked": False})
     if not token_obj or token_obj.expires_at <= _now_utc_naive():
         raise HTTPException(status_code=401, detail="Refresh token invalid or expired")
 
-    user = _run(User.find_one({"_id": token_obj.user_id}))
+    user = await User.find_one({"_id": token_obj.user_id})
     if not user:
         raise HTTPException(status_code=401, detail="User no longer exists")
 
     token_obj.revoked = True
-    _run(token_obj.save())
-    new_refresh = _run(_issue_refresh_token(user))
+    await token_obj.save()
+    new_refresh = await _issue_refresh_token(user)
     _set_refresh_cookie(response, new_refresh)
 
     new_access = create_access_token(user.email)
@@ -558,13 +558,13 @@ def refresh_access_token(
 
 
 @router.post("/2fa/setup", response_model=SuccessResponse)
-def setup_2fa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Any:
-    db_user = _run(User.find_one({"_id": current_user.id}))
+async def setup_2fa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Any:
+    db_user = await User.find_one({"_id": current_user.id})
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     secret = pyotp.random_base32()
     db_user.two_factor_secret = secret
-    _run(db_user.save())
+    await db_user.save()
     uri = pyotp.totp.TOTP(secret).provisioning_uri(name=db_user.email, issuer_name="SymbioAI")
     image = qrcode.make(uri)
     buffer = io.BytesIO()
@@ -574,8 +574,8 @@ def setup_2fa(current_user: User = Depends(get_current_user), db: Session = Depe
 
 
 @router.post("/2fa/enable", response_model=SuccessResponse)
-def enable_2fa(payload: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Any:
-    db_user = _run(User.find_one({"_id": current_user.id}))
+async def enable_2fa(payload: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Any:
+    db_user = await User.find_one({"_id": current_user.id})
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     code = (payload.get("code") or "").strip()
@@ -584,15 +584,15 @@ def enable_2fa(payload: dict, current_user: User = Depends(get_current_user), db
     recovery_codes = [secrets.token_hex(4) for _ in range(8)]
     db_user.two_factor_enabled = True
     db_user.recovery_codes = json.dumps(recovery_codes)
-    _run(db_user.save())
+    await db_user.save()
     return {"success": True, "message": "2FA enabled", "data": {"recovery_codes": recovery_codes}}
 
 
 @router.post("/2fa/verify-login", response_model=SuccessResponse)
-def verify_2fa_login(payload: dict, response: Response, db: Session = Depends(get_db)) -> Any:
+async def verify_2fa_login(payload: dict, response: Response, db: Session = Depends(get_db)) -> Any:
     email = (payload.get("email") or "").strip()
     code = (payload.get("code") or "").strip()
-    user = _run(User.find_one({"email": email}))
+    user = await User.find_one({"email": email})
     if not user or not user.two_factor_secret:
         raise HTTPException(status_code=401, detail="Invalid 2FA request")
     recovery_codes = json.loads(user.recovery_codes or "[]")
@@ -603,16 +603,16 @@ def verify_2fa_login(payload: dict, response: Response, db: Session = Depends(ge
     if valid_recovery:
         recovery_codes.remove(code)
         user.recovery_codes = json.dumps(recovery_codes)
-        _run(user.save())
+        await user.save()
     token = create_access_token(user.email)
-    refresh_token = _run(_issue_refresh_token(user))
+    refresh_token = await _issue_refresh_token(user)
     _set_refresh_cookie(response, refresh_token)
     return {"success": True, "message": "2FA verified", "data": {"token": token, "user": _public_user(user)}}
 
 
 @router.post("/2fa/disable", response_model=SuccessResponse)
-def disable_2fa(payload: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Any:
-    db_user = _run(User.find_one({"_id": current_user.id}))
+async def disable_2fa(payload: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Any:
+    db_user = await User.find_one({"_id": current_user.id})
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     code = (payload.get("code") or "").strip()
@@ -622,5 +622,5 @@ def disable_2fa(payload: dict, current_user: User = Depends(get_current_user), d
     db_user.two_factor_secret = None
     db_user.recovery_codes = None
     db_user.trusted_device_token = None
-    _run(db_user.save())
+    await db_user.save()
     return {"success": True, "message": "2FA disabled", "data": {}}
