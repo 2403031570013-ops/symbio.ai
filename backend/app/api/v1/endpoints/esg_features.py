@@ -42,7 +42,7 @@ async def create_carbon_footprint(
 
 
 @router.get("/carbon-footprint/{factory_id}", response_model=List[CarbonFootprintResponse])
-def get_carbon_footprints(
+async def get_carbon_footprints(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -53,7 +53,7 @@ def get_carbon_footprints(
 
 
 @router.post("/esg-score", response_model=ESGScoreResponse)
-async def create_esg_score(
+async async def create_esg_score(
     score: ESGScoreCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -65,7 +65,7 @@ async def create_esg_score(
 
 
 @router.get("/esg-score/{factory_id}", response_model=ESGScoreResponse)
-def get_esg_score(
+async def get_esg_score(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -78,7 +78,7 @@ def get_esg_score(
 
 
 @router.post("/sustainability-dashboard", response_model=SustainabilityDashboardResponse)
-def create_sustainability_dashboard(
+async def create_sustainability_dashboard(
     dashboard: SustainabilityDashboardCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -90,7 +90,7 @@ def create_sustainability_dashboard(
 
 
 @router.get("/sustainability-dashboard/{factory_id}", response_model=SustainabilityDashboardResponse)
-def get_sustainability_dashboard(
+async def get_sustainability_dashboard(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -103,7 +103,7 @@ def get_sustainability_dashboard(
 
 
 @router.get("/waste-impact/{material_id}")
-def get_waste_impact(
+async def get_waste_impact(
     material_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -116,7 +116,7 @@ def get_waste_impact(
 
 
 @router.get("/green-certifications/{factory_id}")
-def get_green_certifications(
+async def get_green_certifications(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -127,7 +127,7 @@ def get_green_certifications(
 
 
 @router.get("/carbon-credits/{factory_id}")
-def get_carbon_credits(
+async def get_carbon_credits(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
