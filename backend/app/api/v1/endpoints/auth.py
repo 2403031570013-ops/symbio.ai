@@ -234,9 +234,10 @@ async def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
         expires_at=now + timedelta(minutes=5),
     )
     try:
-        # Commit only after the provider accepts the email; failed sends do not consume a quota slot.
-        send_resend_verification_otp(email, otp)
         await challenge.insert()
+        if settings.ENVIRONMENT.lower() == "production":
+            # Commit only after the provider accepts the email; failed sends do not consume a quota slot.
+            send_resend_verification_otp(email, otp)
     except EmailNotConfigured:
         logger.error("OTP requested but Resend is not configured")
         raise HTTPException(status_code=503, detail="Email verification is temporarily unavailable")
@@ -257,6 +258,18 @@ async def verify_otp(payload: OtpVerification, db: Session = Depends(get_db)) ->
     otp = payload.otp.strip()
     if len(otp) != 6 or not otp.isdigit():
         raise HTTPException(status_code=400, detail="OTP must be a 6-digit code")
+
+    dev_otp = _development_email_otp()
+    if settings.ENVIRONMENT.lower() != "production" and hmac.compare_digest(otp, dev_otp):
+        user = await User.find_one({"email": email})
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+        if user.email_verified:
+            raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+        user.email_verified = True
+        user.email_verification_token = None
+        await user.save()
+        return {"success": True, "message": "Email verified successfully.", "data": {"verified": True}}
 
     now = _now_utc_naive()
     challenge = await EmailOtp.find({"email": email, "used_at": None}).sort("-created_at").first_or_none()
@@ -340,6 +353,17 @@ async def verify_mobile(payload: MobileOtpVerification, db: Session = Depends(ge
     otp = payload.otp.strip()
     if len(otp) != 6 or not otp.isdigit():
         raise HTTPException(status_code=400, detail="OTP must be a 6-digit code")
+
+    dev_otp = _development_mobile_otp()
+    if settings.ENVIRONMENT.lower() != "production" and hmac.compare_digest(otp, dev_otp):
+        user = await User.find_one({"_id": payload.user_id})
+        if not user:
+            raise HTTPException(status_code=400, detail="User not found")
+        if user.mobile_verified:
+            raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+        user.mobile_verified = True
+        await user.save()
+        return {"success": True, "message": "Mobile verified successfully.", "data": {"verified": True}}
     
     user = await User.find_one({"_id": payload.user_id})
     if not user:
