@@ -498,7 +498,7 @@ async def update_ai_settings(payload: dict, request: Request, db: Session = Depe
     try:
         db.commit()
     except Exception:
-        # db may be a SQLAlchemy session in older deploys; ignore commit errors here
+        # db may be a legacy session in older deploys; ignore commit errors here
         pass
     return {"success": True, "message": "AI threshold updated", "data": {"confidence_threshold": threshold}}
 
