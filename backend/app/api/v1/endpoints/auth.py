@@ -78,6 +78,8 @@ async def health_check() -> dict:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    if not plain_password or not hashed_password:
+        return False
     return _verify_password(plain_password, hashed_password)
 
 
@@ -100,6 +102,10 @@ def _public_user(user: User) -> dict:
         "email_verified": bool(getattr(user, "email_verified", False)),
         "two_factor_enabled": bool(getattr(user, "two_factor_enabled", False)),
     }
+
+
+def _normalize_email(email: str) -> str:
+    return str(email).strip().lower()
 
 
 def _now_utc_naive() -> datetime:
@@ -162,7 +168,8 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 
 @router.post("/register", response_model=SuccessResponse)
 async def register(user_in: UserCreate, response: Response, db: Session = Depends(get_db)) -> Any:
-    existing = await User.find_one({"email": user_in.email})
+    email = _normalize_email(user_in.email)
+    existing = await User.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     if user_in.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
@@ -170,7 +177,7 @@ async def register(user_in: UserCreate, response: Response, db: Session = Depend
 
     user = User(
         id=str(uuid4()),
-        email=user_in.email,
+        email=email,
         full_name=user_in.full_name,
         hashed_password=get_password_hash(user_in.password),
         role=user_in.role,
@@ -272,7 +279,7 @@ async def verify_otp(payload: OtpVerification, db: Session = Depends(get_db)) ->
 
 
 @router.post("/verify-factory", response_model=SuccessResponse)
-def verify_factory(payload: FactoryVerification, db: Session = Depends(get_db)) -> Any:
+async def verify_factory(payload: FactoryVerification, db: Session = Depends(get_db)) -> Any:
     """Verify factory using the configured factory verification code."""
     factory_code = str(payload.factory_code).strip()
     expected_code = _factory_verification_code()
@@ -359,7 +366,8 @@ async def verify_mobile(payload: MobileOtpVerification, db: Session = Depends(ge
 
 @router.post("/login", response_model=SuccessResponse)
 async def login(user_in: UserLogin, response: Response, db: Session = Depends(get_db)) -> Any:
-    user = await User.find_one({"email": user_in.email})
+    email = _normalize_email(user_in.email)
+    user = await User.find_one({"email": email})
     if not user or not verify_password(user_in.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -376,7 +384,8 @@ async def login(user_in: UserLogin, response: Response, db: Session = Depends(ge
 
 @router.post("/admin-login", response_model=SuccessResponse)
 async def admin_login(user_in: UserLogin, response: Response, request: Request = None, db: Session = Depends(get_db)) -> Any:
-    user = await User.find_one({"email": user_in.email})
+    email = _normalize_email(user_in.email)
+    user = await User.find_one({"email": email})
     if not user or not verify_password(user_in.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid admin credentials")
     if user.role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
@@ -459,7 +468,7 @@ async def google_login(payload: dict, response: Response, db: Session = Depends(
 
 @router.post("/forgot-password", response_model=SuccessResponse)
 async def forgot_password(payload: dict) -> Any:
-    email = (payload.get("email") or "").strip()
+    email = _normalize_email(payload.get("email") or "")
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
     user = await User.find_one({"email": email})
@@ -501,6 +510,17 @@ async def verify_email(payload: dict) -> Any:
     user.email_verification_token = None
     await user.save()
     return {"success": True, "message": "Email verified", "data": {"verified": True}}
+
+
+@router.post("/admin-secret/verify", response_model=SuccessResponse)
+async def verify_admin_secret(payload: dict) -> Any:
+    if settings.ENVIRONMENT.lower() == "production":
+        raise HTTPException(status_code=403, detail="Access denied")
+    expected_secret = (settings.ADMIN_DEV_SECRET or "").strip()
+    submitted_secret = str(payload.get("secret") or "").strip()
+    if not expected_secret or not hmac.compare_digest(submitted_secret, expected_secret):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return {"success": True, "message": "Admin secret verified", "data": {"verified": True}}
 
 @router.post("/logout", response_model=SuccessResponse)
 async def logout(

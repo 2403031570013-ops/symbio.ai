@@ -105,24 +105,27 @@ export default function AdminPanelPage() {
   const [selectedFactoryDocs, setSelectedFactoryDocs] = useState(null);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
+  const textValue = (value, fallback = '') => (typeof value === 'string' ? value : value == null ? fallback : String(value));
+  const safeArray = (value) => (Array.isArray(value) ? value : []);
+
   const stats = data.dashboard?.stats || {};
-  const users = data.users || [];
-  const listings = data.listings || [];
-  const factories = data.factories || [];
-  const transactions = data.transactions || [];
-  const matches = data.matches || [];
+  const users = safeArray(data.users);
+  const listings = safeArray(data.listings);
+  const factories = safeArray(data.factories);
+  const transactions = safeArray(data.transactions);
+  const matches = safeArray(data.matches);
   const chat = data.chat || { conversations: [], messages: [] };
   const health = data.health || {};
   const logs = data.logs || {};
 
   const visibleUsers = useMemo(() => users.filter((user) => {
-    const haystack = `${user.full_name} ${user.email}`.toLowerCase();
+    const haystack = `${textValue(user.full_name)} ${textValue(user.email)}`.toLowerCase();
     return haystack.includes(query.toLowerCase()) && (!roleFilter || user.role === roleFilter);
   }), [users, query, roleFilter]);
 
   const visibleListings = useMemo(() => listings.filter((item) => {
-    const matchesQuery = item.name.toLowerCase().includes(query.toLowerCase()) || 
-                         item.chemical_composition.toLowerCase().includes(query.toLowerCase());
+    const matchesQuery = textValue(item.name).toLowerCase().includes(query.toLowerCase()) || 
+                         textValue(item.chemical_composition).toLowerCase().includes(query.toLowerCase());
     return matchesQuery && (!listingFilter || item.status === listingFilter);
   }), [listings, query, listingFilter]);
 
@@ -130,7 +133,7 @@ export default function AdminPanelPage() {
     setLoading(true);
     setError('');
     try {
-      const [dashboardRes, usersRes, factoriesRes, listingsRes, transactionsRes, matchesRes, healthRes, logsRes, chatRes, settingsRes] = await Promise.all([
+      const [dashboardRes, usersRes, factoriesRes, listingsRes, transactionsRes, matchesRes, healthRes, logsRes, chatRes, settingsRes] = await Promise.allSettled([
         api.get('/admin/dashboard'),
         api.get('/admin/users'),
         api.get('/admin/factories'),
@@ -142,19 +145,28 @@ export default function AdminPanelPage() {
         api.get('/admin/chat'),
         api.get('/admin/settings'),
       ]);
-      const ai = unwrapData(matchesRes) || {};
-      setThreshold(ai.threshold || 80);
+      const dashboardData = dashboardRes.status === 'fulfilled' ? unwrapData(dashboardRes.value) : null;
+      const usersData = usersRes.status === 'fulfilled' ? unwrapData(usersRes.value) : null;
+      const factoriesData = factoriesRes.status === 'fulfilled' ? unwrapData(factoriesRes.value) : null;
+      const listingsData = listingsRes.status === 'fulfilled' ? unwrapData(listingsRes.value) : null;
+      const transactionsData = transactionsRes.status === 'fulfilled' ? unwrapData(transactionsRes.value) : null;
+      const ai = matchesRes.status === 'fulfilled' ? unwrapData(matchesRes.value) || {} : {};
+      const healthData = healthRes.status === 'fulfilled' ? unwrapData(healthRes.value) : null;
+      const logsData = logsRes.status === 'fulfilled' ? unwrapData(logsRes.value) : null;
+      const chatData = chatRes.status === 'fulfilled' ? unwrapData(chatRes.value) : null;
+      const settingsData = settingsRes.status === 'fulfilled' ? unwrapData(settingsRes.value) : null;
+      setThreshold(Number(ai.threshold || 80));
       setData({
-        dashboard: unwrapData(dashboardRes),
-        users: unwrapData(usersRes)?.users || [],
-        factories: unwrapData(factoriesRes)?.factories || [],
-        listings: unwrapData(listingsRes)?.listings || [],
-        transactions: unwrapData(transactionsRes)?.transactions || [],
+        dashboard: dashboardData || { stats: {}, charts: {}, system_alerts: [] },
+        users: usersData?.users || [],
+        factories: factoriesData?.factories || [],
+        listings: listingsData?.listings || [],
+        transactions: transactionsData?.transactions || [],
         matches: ai.matches || [],
-        health: unwrapData(healthRes),
-        logs: unwrapData(logsRes),
-        chat: unwrapData(chatRes),
-        settings: unwrapData(settingsRes)?.settings || {},
+        health: healthData || {},
+        logs: logsData || {},
+        chat: chatData || { conversations: [], messages: [] },
+        settings: settingsData?.settings || {},
       });
     } catch (err) {
       setError(getApiError(err, 'Unable to load admin portal'));

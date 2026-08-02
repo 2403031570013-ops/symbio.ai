@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     DEV_EMAIL_OTP: str = "654321"
     DEV_MOBILE_OTP: str = "123456"
     DEV_FACTORY_CODE: str = "123456"
+    ADMIN_DEV_SECRET: str | None = Field(default=None, validation_alias=AliasChoices("ADMIN_DEV_SECRET"))
     ENVIRONMENT: str = "development"
     SECURE_COOKIES: bool = False
     SMTP_HOST: str | None = None

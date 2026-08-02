@@ -56,7 +56,8 @@ function AdminRoute({ children }) {
     );
   }
   if (!isAuthenticated) return <Navigate to="/admin/login" replace />;
-  return ['Admin', 'Super Admin'].includes(user?.role) ? children : <Navigate to="/dashboard" replace state={{ accessDenied: true }} />;
+  const hasSecretAccess = !import.meta.env.DEV || window.sessionStorage.getItem('symbioai_admin_secret_verified') === 'true';
+  return ['Admin', 'Super Admin'].includes(user?.role) && hasSecretAccess ? children : <Navigate to="/dashboard" replace state={{ accessDenied: true }} />;
 }
 
 export default function App() {

@@ -27,8 +27,13 @@ export default function MainLayout() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [adminSecretOpen, setAdminSecretOpen] = useState(false);
+  const [adminSecret, setAdminSecret] = useState('');
+  const [adminSecretError, setAdminSecretError] = useState('');
+  const [adminSecretLoading, setAdminSecretLoading] = useState(false);
   const visibleNavItems = navItems.filter((item) => item.to !== '/admin' || ['Admin', 'Super Admin'].includes(user?.role));
   const unreadCount = notifications.filter((item) => !item.read).length;
+  const isDevMode = import.meta.env.DEV;
 
   const loadNotifications = async () => {
     try {
@@ -53,6 +58,44 @@ export default function MainLayout() {
     }
   };
 
+  const openAdminAccess = () => {
+    if (!isDevMode) {
+      window.location.assign('/admin');
+      return;
+    }
+    if (window.sessionStorage.getItem('symbioai_admin_secret_verified') === 'true') {
+      window.location.assign('/admin');
+      return;
+    }
+    setAdminSecret('');
+    setAdminSecretError('');
+    setAdminSecretOpen(true);
+  };
+
+  const submitAdminSecret = async (event) => {
+    event.preventDefault();
+    setAdminSecretError('');
+    setAdminSecretLoading(true);
+    try {
+      const response = await api.post('/auth/admin-secret/verify', { secret: adminSecret });
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Access denied');
+      }
+      window.sessionStorage.setItem('symbioai_admin_secret_verified', 'true');
+      setAdminSecretOpen(false);
+      window.location.assign('/admin');
+    } catch (error) {
+      setAdminSecretError(error?.response?.data?.detail || error?.message || 'Access denied');
+    } finally {
+      setAdminSecretLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    window.sessionStorage.removeItem('symbioai_admin_secret_verified');
+    await logout();
+  };
+
   const markRead = async (notification) => {
     try {
       await api.put(`/notifications/${notification.id}/read`);
@@ -70,10 +113,17 @@ export default function MainLayout() {
   const navigation = (
     <nav className="space-y-1" aria-label="Primary navigation">
       {visibleNavItems.map(({ to, label, icon: Icon }) => (
-        <NavLink key={to} to={to} onClick={() => setNavOpen(false)} className={navLinkClass}>
-          <Icon size={18} aria-hidden="true" />
-          <span>{label}</span>
-        </NavLink>
+        to === '/admin' ? (
+          <button key={to} type="button" onClick={() => { setNavOpen(false); openAdminAccess(); }} className={`${navLinkClass({ isActive: location.pathname.startsWith('/admin') })} w-full text-left`}>
+            <Icon size={18} aria-hidden="true" />
+            <span>{label}</span>
+          </button>
+        ) : (
+          <NavLink key={to} to={to} onClick={() => setNavOpen(false)} className={navLinkClass}>
+            <Icon size={18} aria-hidden="true" />
+            <span>{label}</span>
+          </NavLink>
+        )
       ))}
     </nav>
   );
@@ -100,7 +150,7 @@ export default function MainLayout() {
             <p className="text-sm font-medium text-white">{user?.full_name || user?.name || user?.email || 'Signed in user'}</p>
             <p className="text-sm text-slate-400">{user?.role}</p>
             <button
-              onClick={logout}
+              onClick={handleLogout}
               className="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-700 px-3 py-2 text-sm text-slate-300 transition hover:border-emerald-400 hover:text-emerald-300"
             >
               <LogOut size={16} aria-hidden="true" />
@@ -179,7 +229,7 @@ export default function MainLayout() {
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">{navigation}</div>
-            <button onClick={logout} className="mt-5 inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400 hover:text-emerald-300">
+              <button onClick={handleLogout} className="mt-5 inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400 hover:text-emerald-300">
               <LogOut size={16} aria-hidden="true" />
               Sign out
             </button>
@@ -207,6 +257,41 @@ export default function MainLayout() {
 
       {/* Global Onboarding & Popup Notification Center */}
       <OnboardingAndPopups />
+
+      {adminSecretOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Admin secret dialog">
+          <form onSubmit={submitAdminSecret} className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-6 shadow-2xl shadow-slate-950/50">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-emerald-300">Enterprise Admin</p>
+                <h3 className="mt-1 text-xl font-semibold text-white">Enter admin secret</h3>
+              </div>
+              <button type="button" onClick={() => setAdminSecretOpen(false)} className="rounded-full border border-white/10 p-2 text-slate-400 transition hover:text-white" aria-label="Close admin secret dialog">
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-slate-400">Development access only. Wrong secret is denied.</p>
+            <label className="mt-5 block">
+              <span className="mb-2 block text-sm font-medium text-slate-200">Secret</span>
+              <input
+                value={adminSecret}
+                onChange={(event) => setAdminSecret(event.target.value)}
+                autoFocus
+                type="password"
+                className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none transition focus:border-emerald-400"
+                placeholder="Enter admin secret"
+              />
+            </label>
+            {adminSecretError ? <p className="mt-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{adminSecretError}</p> : null}
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button type="button" onClick={() => setAdminSecretOpen(false)} className="rounded-xl border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 transition hover:text-white">Cancel</button>
+              <button type="submit" disabled={adminSecretLoading} className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60">
+                {adminSecretLoading ? 'Checking...' : 'Open Admin'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }

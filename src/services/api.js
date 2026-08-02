@@ -1,4 +1,4 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -15,7 +15,7 @@ api.interceptors.request.use((config) => {
 });
 
 let isRefreshing = false;
-let refreshQueue = [];
+let refreshPromise = null;
 
 api.interceptors.response.use(
   (response) => response,
@@ -26,46 +26,40 @@ api.interceptors.response.use(
     const requestUrl = originalRequest.url || '';
     const isAuthenticationRequest = requestUrl.includes('/auth/login')
       || requestUrl.includes('/auth/admin-login')
+      || requestUrl.includes('/auth/admin-secret/verify')
       || requestUrl.includes('/auth/google')
       || requestUrl.includes('/auth/refresh');
 
-    // Login and refresh failures are final. Retrying either through the refresh
-    // endpoint caused a 401 refresh loop and left the login button on "Signing in...".
     if (status === 401 && !originalRequest._retry && !isAuthenticationRequest) {
       originalRequest._retry = true;
-
-      if (!isRefreshing) {
+      if (!refreshPromise) {
         isRefreshing = true;
-        try {
-          const refreshResponse = await api.post('/auth/refresh');
-          const nextToken = refreshResponse?.data?.data?.token;
-          if (!nextToken) throw new Error('Missing refreshed access token');
-
-          localStorage.setItem('symbioai_token', nextToken);
-          api.defaults.headers.common.Authorization = `Bearer ${nextToken}`;
-          refreshQueue.forEach((cb) => cb(null, nextToken));
-          refreshQueue = [];
-        } catch (refreshError) {
-          refreshQueue.forEach((cb) => cb(refreshError));
-          refreshQueue = [];
-          localStorage.removeItem('symbioai_token');
-          isRefreshing = false;
-          return Promise.reject(error);
-        }
-        isRefreshing = false;
+        refreshPromise = api.post('/auth/refresh')
+          .then((refreshResponse) => {
+            const nextToken = refreshResponse?.data?.data?.token;
+            if (!nextToken) throw new Error('Missing refreshed access token');
+            localStorage.setItem('symbioai_token', nextToken);
+            api.defaults.headers.common.Authorization = `Bearer ${nextToken}`;
+            return nextToken;
+          })
+          .catch((refreshError) => {
+            localStorage.removeItem('symbioai_token');
+            throw refreshError;
+          })
+          .finally(() => {
+            isRefreshing = false;
+            refreshPromise = null;
+          });
       }
 
-      return new Promise((resolve, reject) => {
-        refreshQueue.push((queueError, nextToken) => {
-          if (queueError || !nextToken) {
-            reject(queueError || error);
-            return;
-          }
-          originalRequest.headers = originalRequest.headers || {};
-          originalRequest.headers.Authorization = `Bearer ${nextToken}`;
-          resolve(api(originalRequest));
-        });
-      });
+      try {
+        const nextToken = await refreshPromise;
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = `Bearer ${nextToken}`;
+        return api(originalRequest);
+      } catch {
+        return Promise.reject(error);
+      }
     }
 
     return Promise.reject(error);
