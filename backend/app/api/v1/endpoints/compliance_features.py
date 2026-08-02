@@ -42,7 +42,7 @@ async def create_compliance_check(
 
 
 @router.get("/compliance-check/{factory_id}", response_model=List[ComplianceCheckResponse])
-def get_compliance_checks(
+async def get_compliance_checks(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -53,7 +53,7 @@ def get_compliance_checks(
 
 
 @router.post("/risk-assessment", response_model=RiskAssessmentResponse)
-def create_risk_assessment(
+async def create_risk_assessment(
     assessment: RiskAssessmentCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -65,7 +65,7 @@ def create_risk_assessment(
 
 
 @router.get("/risk-assessment/{factory_id}", response_model=List[RiskAssessmentResponse])
-def get_risk_assessments(
+async def get_risk_assessments(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -76,7 +76,7 @@ def get_risk_assessments(
 
 
 @router.get("/audit-trail/{entity_type}/{entity_id}")
-def get_audit_trail(
+async def get_audit_trail(
     entity_type: str,
     entity_id: str,
     db: Session = Depends(get_db),
@@ -88,7 +88,7 @@ def get_audit_trail(
 
 
 @router.post("/document-compliance", response_model=DocumentComplianceResponse)
-def create_document_compliance(
+async def create_document_compliance(
     document: DocumentComplianceCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -100,7 +100,7 @@ def create_document_compliance(
 
 
 @router.get("/document-compliance/{factory_id}", response_model=List[DocumentComplianceResponse])
-def get_document_compliance(
+async def get_document_compliance(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -111,7 +111,7 @@ def get_document_compliance(
 
 
 @router.get("/regulatory-updates")
-def get_regulatory_updates(
+async def get_regulatory_updates(
     jurisdiction: str = None,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -124,7 +124,7 @@ def get_regulatory_updates(
 
 
 @router.get("/fraud-detections/{factory_id}")
-def get_fraud_detections(
+async def get_fraud_detections(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)

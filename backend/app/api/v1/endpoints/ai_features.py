@@ -48,7 +48,7 @@ async def create_recommendation(
     db_rec = AIRecommendation(**recommendation.dict(), user_id=current_user.id)
     import uuid
     db_rec.id = str(uuid.uuid4())
-    _run(db_rec.insert())
+    await _run(db_rec.insert())
     return db_rec
 
 
@@ -64,7 +64,7 @@ async def get_recommendations(
     q = AIRecommendation.find(AIRecommendation.user_id == current_user.id)
     if status:
         q = q.find(AIRecommendation.status == status)
-    recs = _run(q.sort(-AIRecommendation.created_at).skip(skip).limit(limit).to_list())
+    recs = await _run(q.sort(-AIRecommendation.created_at).skip(skip).limit(limit).to_list())
     summary = {
         "total": len(recs),
         "pending": sum(1 for r in recs if r.status == "pending"),
@@ -99,14 +99,14 @@ async def update_recommendation_status(
     current_user=Depends(get_current_user)
 ):
     """Feature 1: Update recommendation lifecycle status"""
-    rec = _run(AIRecommendation.find_one(AIRecommendation.id == recommendation_id, AIRecommendation.user_id == current_user.id))
+    rec = await _run(AIRecommendation.find_one(AIRecommendation.id == recommendation_id, AIRecommendation.user_id == current_user.id))
     if not rec:
         raise HTTPException(status_code=404, detail="Recommendation not found")
     valid_statuses = ["pending", "accepted", "rejected", "implemented"]
     if status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Status must be one of: {valid_statuses}")
     rec.status = status
-    _run(rec.save())
+    await _run(rec.save())
     return {"success": True, "message": f"Recommendation status updated to '{status}'", "data": {"id": recommendation_id, "status": status}}
 
 
@@ -121,18 +121,18 @@ async def create_demand_prediction(
     import uuid
     db_prediction = DemandPrediction(**prediction.dict())
     db_prediction.id = str(uuid.uuid4())
-    _run(db_prediction.insert())
+    await _run(db_prediction.insert())
     return db_prediction
 
 
 @router.get("/demand-predictions/{material_id}")
-def get_demand_predictions(
+async def get_demand_predictions(
     material_id: str,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
     """Feature 2: Get demand forecasts with market signals analysis"""
-    predictions = _run(DemandPrediction.find(DemandPrediction.material_id == material_id).sort(-DemandPrediction.prediction_date).to_list())
+    predictions = await _run(DemandPrediction.find(DemandPrediction.material_id == material_id).sort(-DemandPrediction.prediction_date).to_list())
 
     # Compute trend direction
     trend = "stable"
@@ -163,7 +163,7 @@ def get_demand_predictions(
 
 # ── Feature 3: Price Forecasting ─────────────────────────────────────────────
 @router.post("/price-forecasts", response_model=PriceForecastResponse)
-def create_price_forecast(
+async def create_price_forecast(
     forecast: PriceForecastCreate,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
@@ -172,18 +172,18 @@ def create_price_forecast(
     import uuid
     db_forecast = PriceForecast(**forecast.dict())
     db_forecast.id = str(uuid.uuid4())
-    _run(db_forecast.insert())
+    await _run(db_forecast.insert())
     return db_forecast
 
 
 @router.get("/price-forecasts/{material_id}")
-def get_price_forecasts(
+async def get_price_forecasts(
     material_id: str,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
     """Feature 3: Get price forecasts with profitability analysis"""
-    forecasts = _run(PriceForecast.find(PriceForecast.material_id == material_id).sort(-PriceForecast.target_date).to_list())
+    forecasts = await _run(PriceForecast.find(PriceForecast.material_id == material_id).sort(-PriceForecast.target_date).to_list())
 
     return {
         "success": True,
@@ -206,18 +206,18 @@ def get_price_forecasts(
 
 # ── Feature 4: AI Smart Material Matching ────────────────────────────────────
 @router.get("/smart-matches/{material_id}")
-def get_smart_matches(
+async def get_smart_matches(
     material_id: str,
     min_score: int = Query(default=70, ge=0, le=100),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
     """Feature 4: AI-powered smart matches with enhanced scoring and insights"""
-    material = _run(Material.find_one(Material.id == material_id))
+    material = await _run(Material.find_one(Material.id == material_id))
     if not material:
         raise HTTPException(status_code=404, detail="Material not found")
 
-    matches = _run(Match.find(Match.material_id == material_id, Match.symbio_score >= min_score).sort(-Match.symbio_score).to_list())
+    matches = await _run(Match.find(Match.material_id == material_id, Match.symbio_score >= min_score).sort(-Match.symbio_score).to_list())
 
     return {
         "success": True,
@@ -249,7 +249,7 @@ def get_smart_matches(
 
 # ── Feature 5: Anomaly Detection Dashboard ───────────────────────────────────
 @router.get("/anomaly-detections")
-def get_anomaly_detections(
+async def get_anomaly_detections(
     severity: Optional[str] = None,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -261,7 +261,7 @@ def get_anomaly_detections(
         q = q.find(AnomalyDetection.severity == severity)
     if status:
         q = q.find(AnomalyDetection.status == status)
-    anomalies = _run(q.sort(-AnomalyDetection.anomaly_score).limit(50).to_list())
+    anomalies = await _run(q.sort(-AnomalyDetection.anomaly_score).limit(50).to_list())
 
     critical_count = sum(1 for a in anomalies if a.severity == "critical")
     high_count = sum(1 for a in anomalies if a.severity == "high")
@@ -293,13 +293,13 @@ def get_anomaly_detections(
 
 # ── Feature 6: Predictive Maintenance Intelligence ───────────────────────────
 @router.get("/predictive-maintenance/{factory_id}")
-def get_predictive_maintenance(
+async def get_predictive_maintenance(
     factory_id: str,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
     """Feature 6: Equipment health monitoring and failure prediction"""
-    maintenance = _run(PredictiveMaintenance.find(PredictiveMaintenance.factory_id == factory_id).sort(PredictiveMaintenance.health_score).to_list())
+    maintenance = await _run(PredictiveMaintenance.find(PredictiveMaintenance.factory_id == factory_id).sort(PredictiveMaintenance.health_score).to_list())
 
     urgent = [m for m in maintenance if m.risk_level in ("critical", "high")]
 

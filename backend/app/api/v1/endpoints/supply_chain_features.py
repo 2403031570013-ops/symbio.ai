@@ -55,7 +55,7 @@ async def get_route_optimization(
 
 
 @router.post("/inventory", response_model=InventoryResponse)
-def create_inventory(
+async def create_inventory(
     inventory: InventoryCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -78,7 +78,7 @@ async def get_inventory(
 
 
 @router.put("/inventory/{inventory_id}")
-def update_inventory(
+async def update_inventory(
     inventory_id: str,
     current_stock: float,
     db: Session = Depends(get_db),
@@ -95,7 +95,7 @@ def update_inventory(
 
 
 @router.post("/supply-chain-visibility", response_model=SupplyChainVisibilityResponse)
-def create_supply_chain_visibility(
+async def create_supply_chain_visibility(
     visibility: SupplyChainVisibilityCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -107,7 +107,7 @@ def create_supply_chain_visibility(
 
 
 @router.get("/supply-chain-visibility/{material_id}", response_model=List[SupplyChainVisibilityResponse])
-def get_supply_chain_visibility(
+async def get_supply_chain_visibility(
     material_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -118,7 +118,7 @@ def get_supply_chain_visibility(
 
 
 @router.get("/shipment-tracking/{shipment_id}")
-def get_shipment_tracking(
+async def get_shipment_tracking(
     shipment_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -131,7 +131,7 @@ def get_shipment_tracking(
 
 
 @router.get("/supplier-performance/{supplier_id}")
-def get_supplier_performance(
+async def get_supplier_performance(
     supplier_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
@@ -144,7 +144,7 @@ def get_supplier_performance(
 
 
 @router.get("/logistics-cost/{shipment_id}")
-def get_logistics_cost(
+async def get_logistics_cost(
     shipment_id: str,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
