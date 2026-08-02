@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
 from jose import jwt
 import pyotp
 import qrcode
@@ -204,10 +204,9 @@ async def register(user_in: UserCreate, response: Response, db: Session = Depend
     }
 
 
-@router.post("/send-otp", response_model=SuccessResponse, responses={429: {"model": ErrorResponse}})
-async def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
+async def _send_otp_for_email(email: str) -> Any:
     """Issue a rate-limited, five-minute verification OTP through Resend."""
-    email = str(payload.email).strip().lower()
+    email = str(email).strip().lower()
     user = await User.find_one({"email": email})
     if not user:
         # Do not turn this endpoint into an account-enumeration oracle.
@@ -249,6 +248,16 @@ async def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
 
     logger.info("Verification OTP issued for %s", email)
     return {"success": True, "message": "Verification code sent. It expires in 5 minutes.", "data": {"cooldown_seconds": 60, "expires_in_seconds": 300}}
+
+
+@router.get("/send-otp", response_model=SuccessResponse, responses={429: {"model": ErrorResponse}})
+async def send_otp_get(email: str = Query(...), db: Session = Depends(get_db)) -> Any:
+    return await _send_otp_for_email(email)
+
+
+@router.post("/send-otp", response_model=SuccessResponse, responses={429: {"model": ErrorResponse}})
+async def send_otp(payload: OtpRequest, db: Session = Depends(get_db)) -> Any:
+    return await _send_otp_for_email(payload.email)
 
 
 @router.post("/verify-otp", response_model=SuccessResponse)
@@ -304,14 +313,13 @@ async def verify_factory(payload: FactoryVerification, db: Session = Depends(get
     return {"success": True, "message": "Factory verified successfully.", "data": {"factory_verified": True}}
 
 
-@router.post("/send-mobile-otp", response_model=SuccessResponse, responses={429: {"model": ErrorResponse}})
-async def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_db)) -> Any:
+async def _send_mobile_otp_for_user(user_id: str, phone_number: str) -> Any:
     """Issue a rate-limited mobile phone verification OTP."""
-    user = await User.find_one({"_id": payload.user_id})
+    user = await User.find_one({"_id": user_id})
     if not user:
         return {"success": True, "message": "If the account exists, a verification code has been sent.", "data": {"cooldown_seconds": 60}}
     
-    phone_number = str(payload.phone_number).strip()
+    phone_number = str(phone_number).strip()
     if not phone_number or len(phone_number) < 10:
         raise HTTPException(status_code=400, detail="Valid phone number is required")
     
@@ -319,20 +327,20 @@ async def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_d
         return {"success": True, "message": "Phone is already verified.", "data": {"verified": True}}
     
     now = _now_utc_naive()
-    latest = await MobileOtp.find({"user_id": payload.user_id, "phone_number": phone_number}).sort("-created_at").first_or_none()
+    latest = await MobileOtp.find({"user_id": user_id, "phone_number": phone_number}).sort("-created_at").first_or_none()
     latest_created_at = _as_utc_naive(latest.created_at) if latest and latest.created_at else None
     if latest_created_at and (now - latest_created_at).total_seconds() < 60:
         remaining = max(1, 60 - int((now - latest_created_at).total_seconds()))
         raise HTTPException(status_code=429, detail=f"Please wait {remaining} seconds before requesting another code")
     
-    request_count = await MobileOtp.find({"user_id": payload.user_id, "created_at": {"$gte": now - timedelta(hours=1)}}).count()
+    request_count = await MobileOtp.find({"user_id": user_id, "created_at": {"$gte": now - timedelta(hours=1)}}).count()
     if request_count >= 5:
         raise HTTPException(status_code=429, detail="Verification request limit reached. Try again in one hour.")
     
     otp = _development_mobile_otp() if settings.ENVIRONMENT.lower() != "production" else f"{secrets.randbelow(1_000_000):06d}"
     mobile_challenge = MobileOtp(
         id=str(uuid4()),
-        user_id=payload.user_id,
+        user_id=user_id,
         phone_number=phone_number,
         otp_hash=_otp_digest(otp),
         expires_at=now + timedelta(minutes=5),
@@ -345,6 +353,16 @@ async def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_d
     await user.save()
     
     return {"success": True, "message": "Verification code sent. It expires in 5 minutes.", "data": {"cooldown_seconds": 60, "expires_in_seconds": 300}}
+
+
+@router.get("/send-mobile-otp", response_model=SuccessResponse, responses={429: {"model": ErrorResponse}})
+async def send_mobile_otp_get(user_id: str = Query(...), phone_number: str = Query(...), db: Session = Depends(get_db)) -> Any:
+    return await _send_mobile_otp_for_user(user_id, phone_number)
+
+
+@router.post("/send-mobile-otp", response_model=SuccessResponse, responses={429: {"model": ErrorResponse}})
+async def send_mobile_otp(payload: MobileOtpRequest, db: Session = Depends(get_db)) -> Any:
+    return await _send_mobile_otp_for_user(payload.user_id, payload.phone_number)
 
 
 @router.post("/verify-mobile", response_model=SuccessResponse)
