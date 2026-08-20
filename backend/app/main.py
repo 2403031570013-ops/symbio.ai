@@ -69,13 +69,21 @@ async def not_found_handler(request: Request, exc):
 
 @app.exception_handler(500)
 async def server_error_handler(request: Request, exc):
+    import traceback
+    tb = traceback.format_exc()
     logger.exception("Unhandled error for %s", request.url.path)
+    if settings.ENVIRONMENT.lower() != 'production':
+        return JSONResponse(status_code=500, content={"success": False, "message": "Internal server error", "errors": [str(exc)], "trace": tb})
     return JSONResponse(status_code=500, content={"success": False, "message": "Internal server error", "errors": ["Unexpected server error"]})
 
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    import traceback
+    tb = traceback.format_exc()
     logger.exception("Unhandled exception for %s", request.url.path)
+    if settings.ENVIRONMENT.lower() != 'production':
+        return JSONResponse(status_code=500, content={"success": False, "message": "Internal server error", "errors": [str(exc)], "trace": tb})
     return JSONResponse(status_code=500, content={"success": False, "message": "Internal server error", "errors": ["Unexpected server error"]})
 
 

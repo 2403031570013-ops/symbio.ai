@@ -235,8 +235,11 @@ async def _send_otp_for_email(email: str) -> Any:
     try:
         await challenge.insert()
         if settings.ENVIRONMENT.lower() == "production":
-            # Commit only after the provider accepts the email; failed sends do not consume a quota slot.
-            send_resend_verification_otp(email, otp)
+            if settings.OTP_PROVIDER.lower() == "resend":
+                # Production must rely on the real provider before consuming a verification attempt.
+                send_resend_verification_otp(email, otp)
+            else:
+                raise EmailNotConfigured("Production email OTP requires a real provider")
     except EmailNotConfigured:
         logger.error("OTP requested but Resend is not configured")
         raise HTTPException(status_code=503, detail="Email verification is temporarily unavailable")
