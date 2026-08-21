@@ -60,8 +60,8 @@ class Settings(BaseSettings):
             raise RuntimeError("JWT_SECRET/SECRET_KEY must be a unique value of at least 32 characters in production")
         if self.JWT_REFRESH_SECRET == "change-me-refresh-in-production" or len(self.JWT_REFRESH_SECRET) < 32:
             raise RuntimeError("JWT_REFRESH_SECRET must be configured in production")
-        if not self.DATABASE_URL or "user:pass" in self.DATABASE_URL:
-            raise RuntimeError("DATABASE_URL must be configured with valid credentials in production")
+        if not self.DATABASE_URL or "user:pass" in self.DATABASE_URL or "<USERNAME>" in self.DATABASE_URL:
+            raise RuntimeError("DATABASE_URL must be configured with valid MongoDB credentials in production. Format: mongodb+srv://<USERNAME>:<PASSWORD>@<CLUSTER>.mongodb.net/<DATABASE>?retryWrites=true&w=majority")
         if self.CORS_ORIGINS:
             if "YOUR_" in self.CORS_ORIGINS or any(not origin.startswith("https://") for origin in self.cors_origins):
                 raise RuntimeError("CORS_ORIGINS must contain only explicit HTTPS frontend origins in production")

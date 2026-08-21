@@ -7,8 +7,8 @@ def test_cors_origins_accept_comma_separated_env_values():
 
 
 def test_mongodb_uri_defaults_to_symbioai_database():
-    settings = Settings(MONGODB_URI="mongodb+srv://user:pass@cluster0.mongodb.net/symbioai?retryWrites=true&w=majority")
-    assert "symbioai" in settings.MONGODB_URI
+    settings = Settings(DATABASE_URL="mongodb+srv://user:pass@cluster0.mongodb.net/symbioai?retryWrites=true&w=majority")
+    assert "symbioai" in settings.DATABASE_URL
 
 
 def test_production_rejects_default_secret():

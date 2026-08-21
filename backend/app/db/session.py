@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import logging
 from inspect import isawaitable
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 from beanie import init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -28,6 +29,29 @@ from app.models.user import User
 client: AsyncIOMotorClient | None = None
 database: AsyncIOMotorDatabase | None = None
 logger = logging.getLogger(__name__)
+
+
+def validate_mongodb_uri(uri: str) -> None:
+    """Validate MongoDB URI format before attempting connection."""
+    if not uri:
+        raise ValueError("DATABASE_URL is not set")
+    
+    try:
+        parsed = urlparse(uri)
+    except Exception as e:
+        raise ValueError(f"Invalid MongoDB URI format: {e}")
+    
+    # Check scheme
+    if parsed.scheme not in ("mongodb", "mongodb+srv"):
+        raise ValueError(f"Invalid MongoDB URI scheme: '{parsed.scheme}'. Must be 'mongodb' or 'mongodb+srv'")
+    
+    # Check netloc (should contain host)
+    if not parsed.netloc:
+        raise ValueError("MongoDB URI must contain a host")
+    
+    # Basic check for credentials placeholder
+    if "user:pass" in uri or "CHANGE_ME" in uri:
+        raise ValueError("MongoDB URI contains placeholder credentials. Please configure with real credentials.")
 
 
 def _append_metadata(self, *args, **kwargs):
@@ -248,9 +272,51 @@ SessionLocal = MongoSession
 async def connect_to_mongo():
     """Connect to MongoDB using Motor and initialize Beanie."""
     global client, database
+    
+    # Validate URI format before attempting connection
+    try:
+        validate_mongodb_uri(settings.DATABASE_URL)
+    except ValueError as e:
+        if settings.ENVIRONMENT.lower() == "production":
+            raise RuntimeError(f"MongoDB configuration error: {e}")
+        logger.warning(f"MongoDB URI validation failed in non-production: {e}. Using mock database.")
+        client = AsyncMongoMockClient()
+        database = client[settings.DATABASE_NAME]
+
+        async def _mock_command(*args, **kwargs):
+            return {"version": "0.0"}
+
+        async def _mock_list_collection_names(*args, **kwargs):
+            return []
+
+        database.command = _mock_command  # type: ignore[assignment]
+        database.list_collection_names = _mock_list_collection_names  # type: ignore[assignment]
+
+        await init_beanie(
+            database=database,
+            document_models=[
+                User, Factory, Material, Transaction, Match, Analytics,
+                AIRecommendation, DemandPrediction, PriceForecast,
+                CarbonFootprint, ESGScore, SustainabilityDashboard, WasteImpact, GreenCertification, CarbonCredit,
+                RouteOptimization, Inventory, SupplyChainVisibility, ShipmentTracking, SupplierPerformance, LogisticsCost,
+                ComplianceCheck, RiskAssessment, AuditTrail, DocumentCompliance,
+                RegulatoryUpdate,
+                DynamicPricing, SmartNotification, WorkflowAutomation, Contract, Payment, BusinessIntelligence, AnomalyDetection, PredictiveMaintenance,
+                RefreshToken, EmailOtp, MobileOtp,
+                Conversation, Message, Notification, StoredObject,
+                FraudDetection,
+            ],
+        )
+        return
+    
     try:
         client = AsyncIOMotorClient(settings.DATABASE_URL)
         database = client[settings.DATABASE_NAME]
+        
+        # Verify connectivity with a ping
+        await client.admin.command('ping')
+        logger.info("MongoDB connection verified successfully")
+        
         await init_beanie(
             database=database,
             skip_indexes=True,
@@ -267,10 +333,10 @@ async def connect_to_mongo():
                 FraudDetection,
             ],
         )
-    except Exception:
+    except Exception as e:
         if settings.ENVIRONMENT.lower() == "production":
-            raise
-        logger.warning("MongoDB initialization failed in non-production startup; using in-memory mock database.")
+            raise RuntimeError(f"Failed to connect to MongoDB: {e}")
+        logger.warning(f"MongoDB initialization failed in non-production startup: {e}. Using in-memory mock database.")
         client = AsyncMongoMockClient()
         database = client[settings.DATABASE_NAME]
 

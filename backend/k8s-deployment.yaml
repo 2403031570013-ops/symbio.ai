@@ -18,11 +18,13 @@ spec:
         ports:
         - containerPort: 8000
         env:
-        - name: MONGODB_URI
+        - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
               name: symbioai-secrets
               key: mongodb-uri
+        - name: DATABASE_NAME
+          value: "symbioai"
         - name: SECRET_KEY
           valueFrom:
             secretKeyRef:
@@ -33,6 +35,33 @@ spec:
             configMapKeyRef:
               name: symbioai-config
               key: cors-origins
+        - name: ENVIRONMENT
+          value: "production"
+        - name: FACTORY_VERIFICATION_CODE
+          valueFrom:
+            secretKeyRef:
+              name: symbioai-secrets
+              key: factory-verification-code
+        - name: GOOGLE_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: symbioai-secrets
+              key: google-client-id
+        - name: GOOGLE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: symbioai-secrets
+              key: google-client-secret
+        - name: RESEND_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: symbioai-secrets
+              key: resend-api-key
+        - name: FRONTEND_URL
+          valueFrom:
+            configMapKeyRef:
+              name: symbioai-config
+              key: frontend-url
 ---
 apiVersion: v1
 kind: Service

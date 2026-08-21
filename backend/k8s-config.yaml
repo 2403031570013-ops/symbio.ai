@@ -4,6 +4,7 @@ metadata:
   name: symbioai-config
 data:
   cors-origins: "https://anikjain4470.github.io/symbio.ai"
+  frontend-url: "https://anikjain4470.github.io/symbio.ai"
 ---
 apiVersion: v1
 kind: Secret
@@ -11,5 +12,9 @@ metadata:
   name: symbioai-secrets
 type: Opaque
 stringData:
-  mongodb-uri: "mongodb+srv://jainanik84_db_user:<YOUR_PASSWORD>@cluster0.nod8nma.mongodb.net/symbioai?retryWrites=true&w=majority&appName=Cluster0"
+  mongodb-uri: "mongodb+srv://<USERNAME>:<PASSWORD>@<CLUSTER>.mongodb.net/<DATABASE>?retryWrites=true&w=majority"
   secret-key: "change-me-in-production"
+  factory-verification-code: "change-me-in-production"
+  google-client-id: "your-google-client-id"
+  google-client-secret: "your-google-client-secret"
+  resend-api-key: "replace-with-your-resend-api-key"

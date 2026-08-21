@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from uuid import uuid4
 from beanie import Document
-from pydantic import Field
+from pydantic import Field, ConfigDict
 
 
 class AIRecommendation(Document):
@@ -23,6 +23,8 @@ class AIRecommendation(Document):
 
 
 class DemandPrediction(Document):
+    model_config = ConfigDict(protected_namespaces=())
+
     id: str = Field(default_factory=lambda: str(uuid4()), alias="_id")
     material_id: str
     prediction_period: str
