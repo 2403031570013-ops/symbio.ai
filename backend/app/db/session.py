@@ -50,7 +50,7 @@ def validate_mongodb_uri(uri: str) -> None:
         raise ValueError("MongoDB URI must contain a host")
     
     # Basic check for credentials placeholder
-    if "user:pass" in uri or "CHANGE_ME" in uri:
+    if "user:pass" in uri or "CHANGE_ME" in uri or "<USERNAME>" in uri or "<PASSWORD>" in uri:
         raise ValueError("MongoDB URI contains placeholder credentials. Please configure with real credentials.")
 
 

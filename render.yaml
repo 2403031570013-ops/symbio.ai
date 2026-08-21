@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: symbioai-backend
+    name: symbio-backend
     env: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt

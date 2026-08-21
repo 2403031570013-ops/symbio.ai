@@ -56,23 +56,34 @@ class Settings(BaseSettings):
     def validate_production_secrets(self) -> None:
         if self.ENVIRONMENT.lower() != "production":
             return
+        # Critical security checks - always enforce these
         if self.SECRET_KEY == "change-me-in-production" or len(self.SECRET_KEY) < 32:
             raise RuntimeError("JWT_SECRET/SECRET_KEY must be a unique value of at least 32 characters in production")
         if self.JWT_REFRESH_SECRET == "change-me-refresh-in-production" or len(self.JWT_REFRESH_SECRET) < 32:
             raise RuntimeError("JWT_REFRESH_SECRET must be configured in production")
-        if not self.DATABASE_URL or "user:pass" in self.DATABASE_URL or "<USERNAME>" in self.DATABASE_URL:
+        
+        # MongoDB is critical for application functionality
+        if not self.DATABASE_URL or "user:pass" in self.DATABASE_URL:
             raise RuntimeError("DATABASE_URL must be configured with valid MongoDB credentials in production. Format: mongodb+srv://<USERNAME>:<PASSWORD>@<CLUSTER>.mongodb.net/<DATABASE>?retryWrites=true&w=majority")
+        
+        # Factory verification code is critical for security
+        if not self.FACTORY_VERIFICATION_CODE:
+            raise RuntimeError("FACTORY_VERIFICATION_CODE must be configured in production")
+        
+        # Optional services - log warnings but don't fail deployment
+        if not self.GOOGLE_CLIENT_ID or not self.GOOGLE_CLIENT_SECRET:
+            import logging
+            logging.warning("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not configured - OAuth features will be disabled")
+        if not self.RESEND_API_KEY:
+            import logging
+            logging.warning("RESEND_API_KEY not configured - email features will be disabled")
+        
+        # CORS and frontend URL validation
         if self.CORS_ORIGINS:
             if "YOUR_" in self.CORS_ORIGINS or any(not origin.startswith("https://") for origin in self.cors_origins):
                 raise RuntimeError("CORS_ORIGINS must contain only explicit HTTPS frontend origins in production")
         if not self.FRONTEND_URL.startswith("https://") or "YOUR_" in self.FRONTEND_URL:
             raise RuntimeError("FRONTEND_URL must be an explicit HTTPS URL in production")
-        if not self.GOOGLE_CLIENT_ID or not self.GOOGLE_CLIENT_SECRET:
-            raise RuntimeError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured in production")
-        if not self.RESEND_API_KEY:
-            raise RuntimeError("RESEND_API_KEY must be configured in production")
-        if not self.FACTORY_VERIFICATION_CODE:
-            raise RuntimeError("FACTORY_VERIFICATION_CODE must be configured in production")
 
     @property
     def MONGODB_URI(self) -> str:
