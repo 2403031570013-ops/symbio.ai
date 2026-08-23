@@ -36,9 +36,12 @@ from app.services.email_service import (
 try:  # google auth is optional until configured
     from google.oauth2 import id_token as google_id_token
     from google.auth.transport import requests as google_requests
-except Exception:  # pragma: no cover
+    google_auth_available = True
+except Exception as e:  # pragma: no cover
     google_id_token = None
     google_requests = None
+    google_auth_available = False
+    logger.warning(f"Google auth libraries not available: {e}. Google login will be disabled.")
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -467,17 +470,20 @@ async def google_login(payload: dict, response: Response, db: Session = Depends(
     full_name: Optional[str] = None
 
     if credential:
-        if not (google_id_token and google_requests):
-            raise HTTPException(status_code=500, detail="Google login is not fully configured on the server")
+        if not google_auth_available:
+            raise HTTPException(status_code=500, detail="Google login is not fully configured on the server. Please contact administrator.")
         if not settings.GOOGLE_CLIENT_ID:
-            raise HTTPException(status_code=500, detail="Google client ID is not configured on the server")
+            raise HTTPException(status_code=500, detail="Google client ID is not configured on the server. Please set GOOGLE_CLIENT_ID environment variable.")
+        if not settings.GOOGLE_CLIENT_SECRET:
+            logger.warning("GOOGLE_CLIENT_SECRET not configured - Google login may have limited functionality")
         try:
             idinfo = google_id_token.verify_oauth2_token(
                 credential,
                 google_requests.Request(),
                 settings.GOOGLE_CLIENT_ID,
             )
-        except Exception:
+        except Exception as e:
+            logger.error(f"Google token verification failed: {e}")
             raise HTTPException(status_code=401, detail="Invalid Google token")
 
         email = (idinfo.get("email") or "").strip().lower() or None

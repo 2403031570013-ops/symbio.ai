@@ -47,14 +47,34 @@ VITE_BASE_PATH=/
 
 Since your frontend and backend are on different domains (Vercel and Render), you need to configure Google OAuth properly:
 
-1. **Go to Google Cloud Console**
-2. **Open your OAuth 2.0 client**
+### Required Steps:
+
+1. **Go to Google Cloud Console** (console.cloud.google.com)
+2. **Create a new OAuth 2.0 client ID** (if you don't have one):
+   - Go to APIs & Services → Credentials
+   - Create credentials → OAuth client ID
+   - Application type: Web application
+   - Name: SymbioAI Frontend
+
 3. **Add these authorized JavaScript origins:**
    - Your Vercel frontend URL (e.g., `https://your-project.vercel.app`)
    - `http://localhost:5173` (for local development)
+
 4. **Add these authorized redirect URIs:**
    - Your Vercel frontend URL (e.g., `https://your-project.vercel.app`)
    - `http://localhost:5173` (for local development)
+
+5. **Copy the Client ID** and set it in both:
+   - Vercel: `VITE_GOOGLE_CLIENT_ID`
+   - Render: `GOOGLE_CLIENT_ID`
+
+6. **Copy the Client Secret** and set it in:
+   - Render: `GOOGLE_CLIENT_SECRET`
+
+### Important Notes:
+- The same Google OAuth client ID must be used on both frontend and backend
+- Google login requires both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to be set in Render
+- The backend validates Google tokens using the client ID for security
 
 ## Deployment Steps
 
@@ -102,6 +122,16 @@ If you see CORS errors in the browser console:
 - Wait for Render to redeploy after changing environment variables
 
 ### Authentication Issues
+If Google login shows "not fully configured":
+1. **Check Google libraries are installed**: The backend requires `google-auth` package (already in requirements.txt)
+2. **Verify environment variables**:
+   - Render: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` must be set
+   - Vercel: `VITE_GOOGLE_CLIENT_ID` must be set
+3. **Check Google Cloud Console**:
+   - Your Vercel URL must be in authorized JavaScript origins
+   - Your Vercel URL must be in authorized redirect URIs
+4. **Wait for Render redeploy** after setting environment variables
+
 If login/refresh doesn't work:
 - Verify `FRONTEND_URL` in Render matches your Vercel URL exactly
 - Check that `SECURE_COOKIES` is set to `true` in Render
