@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    DATABASE_URL: str = Field(default="mongodb+srv://user:pass@cluster.mongodb.net/symbioai?retryWrites=true&w=majority", validation_alias=AliasChoices("DATABASE_URL", "MONGODB_URI"))
+    DATABASE_URL: str = Field(default="mongodb+srv://user:pass@localhost/symbioai?retryWrites=true&w=majority", validation_alias=AliasChoices("DATABASE_URL", "MONGODB_URI"))
     DATABASE_NAME: str = "symbioai"
     CORS_ORIGINS: str = ""
     GOOGLE_CLIENT_ID: str | None = None
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
             return
         
         # MongoDB is critical for application functionality
-        if not self.DATABASE_URL or "user:pass" in self.DATABASE_URL:
+        if not self.DATABASE_URL or "user:pass" in self.DATABASE_URL or "cluster.mongodb.net" in self.DATABASE_URL:
             raise RuntimeError("DATABASE_URL must be configured with valid MongoDB credentials in production. Format: mongodb+srv://<USERNAME>:<PASSWORD>@<CLUSTER>.mongodb.net/<DATABASE>?retryWrites=true&w=majority")
         
         # Optional services - log warnings but don't fail deployment

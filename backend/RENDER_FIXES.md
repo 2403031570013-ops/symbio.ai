@@ -4,7 +4,7 @@
 
 ### 1. Python Version Compatibility
 - **Problem**: Dockerfile used Python 3.13 without specifying patch version, and Render's default is 3.14.3
-- **Fix**: 
+- **Fix**:
   - Updated Dockerfile to use Python 3.13.5 explicitly
   - Added `.python-version` file in backend directory
   - Added `PYTHON_VERSION` environment variable in render.yaml
@@ -25,6 +25,14 @@
 - **Fix**: Updated to pandas 3.0.0+ for better Python 3.13 compatibility
 - **Fix**: Updated scikit-learn version range to include newer versions
 
+### 5. MongoDB Connection Issues
+- **Problem**: "MongoDB URI options are key-value pairs" error due to invalid connection string format
+- **Fix**:
+  - Enhanced MongoDB URI validation in session.py
+  - Added better error messages to guide users on correct DATABASE_URL format
+  - Added connection timeout to prevent hanging
+  - Added detailed logging for connection debugging
+
 ## Configuration Changes
 
 ### Files Modified:
@@ -41,9 +49,13 @@
 
 ### 1. Configure Environment Variables in Render
 You need to set these in your Render dashboard:
-- `DATABASE_URL` - Your MongoDB connection string
-- `CORS_ORIGINS` - Your frontend URL(s)
-- `FRONTEND_URL` - Your frontend URL
+
+**Required:**
+- `DATABASE_URL` - Your MongoDB connection string (Format: `mongodb+srv://<USERNAME>:<PASSWORD>@<CLUSTER>.mongodb.net/<DATABASE>?retryWrites=true&w=majority`)
+- `CORS_ORIGINS` - Your frontend URL(s) (comma-separated, e.g., `https://yourdomain.com`)
+- `FRONTEND_URL` - Your frontend URL (e.g., `https://yourdomain.com`)
+
+**Optional:**
 - `GOOGLE_CLIENT_ID` - Google OAuth client ID
 - `GOOGLE_CLIENT_SECRET` - Google OAuth secret
 - `RESEND_API_KEY` - Resend API key for emails

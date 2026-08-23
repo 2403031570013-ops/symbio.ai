@@ -49,9 +49,16 @@ def validate_mongodb_uri(uri: str) -> None:
     if not parsed.netloc:
         raise ValueError("MongoDB URI must contain a host")
     
-    # Basic check for credentials placeholder
-    if "user:pass" in uri or "CHANGE_ME" in uri or "<USERNAME>" in uri or "<PASSWORD>" in uri:
-        raise ValueError("MongoDB URI contains placeholder credentials. Please configure with real credentials.")
+    # Check for placeholder or default values
+    if "user:pass" in uri or "CHANGE_ME" in uri or "<USERNAME>" in uri or "<PASSWORD>" in uri or "cluster.mongodb.net" in uri:
+        raise ValueError("MongoDB URI contains placeholder or default credentials. Please configure with real MongoDB credentials.")
+    
+    # Basic validation of query parameters format
+    if parsed.query:
+        # Ensure query parameters are in key=value format
+        for param in parsed.query.split('&'):
+            if '=' not in param:
+                raise ValueError(f"Invalid MongoDB URI query parameter format: '{param}'. Parameters must be in key=value format.")
 
 
 def _append_metadata(self, *args, **kwargs):
@@ -278,6 +285,8 @@ async def connect_to_mongo():
         validate_mongodb_uri(settings.DATABASE_URL)
     except ValueError as e:
         if settings.ENVIRONMENT.lower() == "production":
+            logger.error(f"MongoDB configuration error in production: {e}")
+            logger.error("Please set a valid DATABASE_URL environment variable in Render dashboard")
             raise RuntimeError(f"MongoDB configuration error: {e}")
         logger.warning(f"MongoDB URI validation failed in non-production: {e}. Using mock database.")
         client = AsyncMongoMockClient()
@@ -310,7 +319,8 @@ async def connect_to_mongo():
         return
     
     try:
-        client = AsyncIOMotorClient(settings.DATABASE_URL)
+        logger.info(f"Attempting to connect to MongoDB at {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'unknown host'}")
+        client = AsyncIOMotorClient(settings.DATABASE_URL, serverSelectionTimeoutMS=5000)
         database = client[settings.DATABASE_NAME]
         
         # Verify connectivity with a ping
@@ -334,8 +344,12 @@ async def connect_to_mongo():
             ],
         )
     except Exception as e:
+        error_msg = str(e)
         if settings.ENVIRONMENT.lower() == "production":
-            raise RuntimeError(f"Failed to connect to MongoDB: {e}")
+            logger.error(f"Failed to connect to MongoDB in production: {error_msg}")
+            logger.error("Please verify your DATABASE_URL environment variable in Render dashboard")
+            logger.error("Format should be: mongodb+srv://<USERNAME>:<PASSWORD>@<CLUSTER>.mongodb.net/<DATABASE>?retryWrites=true&w=majority")
+            raise RuntimeError(f"Failed to connect to MongoDB: {error_msg}")
         logger.warning(f"MongoDB initialization failed in non-production startup: {e}. Using in-memory mock database.")
         client = AsyncMongoMockClient()
         database = client[settings.DATABASE_NAME]

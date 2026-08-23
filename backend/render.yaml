@@ -10,6 +10,7 @@ services:
         value: 3.13.5
       - key: DATABASE_URL
         sync: false
+        # Required: Format: mongodb+srv://<USERNAME>:<PASSWORD>@<CLUSTER>.mongodb.net/<DATABASE>?retryWrites=true&w=majority
       - key: DATABASE_NAME
         value: symbioai
       - key: JWT_SECRET
