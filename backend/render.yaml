@@ -53,7 +53,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: FACTORY_VERIFICATION_CODE
-        sync: false
+        value: "SYMBIO2024"
       - key: FRONTEND_URL
         sync: false
         # Your Vercel frontend URL (e.g., https://your-project.vercel.app)

@@ -19,6 +19,7 @@ Update these in your Render dashboard for the `symbio-backend` service:
 - `GOOGLE_CLIENT_ID`: Your Google OAuth client ID
 - `GOOGLE_CLIENT_SECRET`: Your Google OAuth secret
 - `RESEND_API_KEY`: For email functionality
+- `FACTORY_VERIFICATION_CODE`: Default is "SYMBIO2024" (you can change this)
 - SMTP settings for email
 - S3 settings for file storage
 - `OPENAI_API_KEY`: For AI features
@@ -86,6 +87,11 @@ After both deployments are complete:
 3. **Test authentication**: Try logging in/registering
 4. **Test Google OAuth**: Try Google Sign-In
 5. **Test API calls**: Check browser console for CORS errors
+
+**Note for Factory Verification:**
+- During registration, you'll need to verify your factory
+- The default factory verification code is: `SYMBIO2024`
+- You can change this in Render by setting `FACTORY_VERIFICATION_CODE` environment variable
 
 ## Troubleshooting
 
