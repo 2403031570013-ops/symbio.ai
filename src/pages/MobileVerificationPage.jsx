@@ -39,7 +39,13 @@ export default function MobileVerificationPage() {
         user_id: userId,
         phone_number: phoneNumber,
       });
-      setMessage(response.data?.message || 'Verification code sent.');
+      const devOtp = response.data?.data?.dev_otp;
+      if (devOtp) {
+        setMessage(`Your verification code is: ${devOtp}`);
+        setOtp(devOtp); // Auto-fill the OTP for convenience
+      } else {
+        setMessage(response.data?.message || 'Verification code sent.');
+      }
       setCooldown(response.data?.data?.cooldown_seconds || 60);
       setOtpSent(true);
     } catch (requestError) {

@@ -26,7 +26,13 @@ export default function VerifyEmailPage() {
     setBusy(true); setError(''); setMessage('');
     try {
       const response = await api.post('/auth/send-otp', { email });
-      setMessage(response.data?.message || 'Verification code sent.');
+      const devOtp = response.data?.data?.dev_otp;
+      if (devOtp) {
+        setMessage(`Your verification code is: ${devOtp}`);
+        setOtp(devOtp); // Auto-fill the OTP for convenience
+      } else {
+        setMessage(response.data?.message || 'Verification code sent.');
+      }
       setCooldown(response.data?.data?.cooldown_seconds || 60);
     } catch (requestError) {
       setError(getApiError(requestError, 'Unable to send verification code.'));
@@ -49,7 +55,7 @@ export default function VerifyEmailPage() {
     <form onSubmit={verifyOtp} className="w-full max-w-md rounded-3xl border border-white/10 bg-white/[0.07] p-8 text-white shadow-2xl backdrop-blur">
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-300"><Leaf size={32} /></div>
       <h1 className="mt-5 text-center text-3xl font-black">Verify your email</h1>
-      <p className="mt-2 text-center text-sm text-slate-300">We will send a six-digit code using Resend. It expires after five minutes.</p>
+      <p className="mt-2 text-center text-sm text-slate-300">We will send a six-digit code. It expires after five minutes.</p>
       <label className="mt-6 block text-sm font-semibold text-slate-200">Email
         <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none focus:border-emerald-400" />
       </label>

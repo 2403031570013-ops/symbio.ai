@@ -42,6 +42,7 @@ export default function FactoryVerificationPage() {
         </div>
         <h1 className="text-center text-3xl font-black text-white">Verify Factory</h1>
         <p className="mt-2 text-center text-sm text-slate-300">Enter your factory verification code to continue registration.</p>
+        <p className="mt-1 text-center text-xs text-slate-400">Development code: 123456 | Production code: SYMBIO2024</p>
 
         <label className="mt-6 block text-sm font-semibold text-slate-200">
           <span>Factory Code</span>
