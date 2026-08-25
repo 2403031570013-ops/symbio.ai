@@ -34,6 +34,10 @@ from app.services.email_service import (
     send_welcome_email,
 )
 
+router = APIRouter()
+logger = logging.getLogger(__name__)
+Session = Any
+
 try:  # google auth is optional until configured
     from google.oauth2 import id_token as google_id_token
     from google.auth.transport import requests as google_requests
@@ -43,10 +47,6 @@ except Exception as e:  # pragma: no cover
     google_requests = None
     google_auth_available = False
     logger.warning(f"Google auth libraries not available: {e}. Google login will be disabled.")
-
-router = APIRouter()
-logger = logging.getLogger(__name__)
-Session = Any
 
 
 def get_db() -> None:
