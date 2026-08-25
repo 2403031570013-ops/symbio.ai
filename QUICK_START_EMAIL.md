@@ -2,7 +2,12 @@
 
 ## For Gmail Users (Fastest Setup)
 
-### Step 1: Generate Gmail App Password
+### Step 1: Enable 2-Factor Authentication (CRITICAL)
+1. Go to https://myaccount.google.com/security
+2. Enable "2-Step Verification" if not already enabled
+3. **This is required for App Passwords to work**
+
+### Step 2: Generate Gmail App Password
 1. Go to https://myaccount.google.com/apppasswords
 2. Login to your Google account
 3. Select "Mail" from the app dropdown
@@ -10,7 +15,7 @@
 5. Click "Generate" 
 6. Copy the 16-character password (it will look like: `abcd efgh ijkl mnop`)
 
-### Step 2: Add to Render Environment Variables
+### Step 3: Add to Render Environment Variables
 In your Render dashboard, add these environment variables:
 
 ```
@@ -22,7 +27,7 @@ SMTP_FROM_EMAIL=your-email@gmail.com
 SMTP_USE_TLS=true
 ```
 
-### Step 3: Redeploy
+### Step 4: Redeploy
 Click "Deploy" in Render and the system will start sending real OTPs to your Gmail!
 
 ## Alternative: Use Resend (Production Ready)
@@ -51,9 +56,20 @@ Click "Deploy" in Render
 5. Check your email inbox - you should receive a real OTP!
 
 ## Troubleshooting
-- **Gmail not working**: Make sure you're using an App Password, not your regular password
+- **Gmail not working**: 
+  - Make sure 2-Step Verification is ENABLED
+  - Make sure you're using an App Password, not your regular password
+  - Regenerate the App Password if it's not working
 - **Email not arriving**: Check spam folder, verify email address is correct
 - **Resend not working**: Verify your API key and check your Resend dashboard
+- **Authentication failed**: The App Password might be incorrect or revoked
+
+## Debug Steps
+1. Check Render logs for detailed error messages
+2. Verify all environment variables are set correctly
+3. Make sure SMTP_HOST is exactly `smtp.gmail.com` (not `antp.gmail.com` or similar)
+4. Ensure the email matches the one used to generate the App Password
+5. Check that 2-Step Verification is enabled on your Google account
 
 ## For Mobile OTP (Optional)
 To enable SMS verification, set up Twilio:

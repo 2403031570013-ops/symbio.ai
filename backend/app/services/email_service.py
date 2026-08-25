@@ -68,13 +68,23 @@ def send_email(to_email: str, subject: str, body: str) -> None:
     # Try SMTP if configured
     if settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
         try:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as server:
+            logger.info("Attempting to send email via SMTP to %s using server %s", to_email, settings.SMTP_HOST)
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
+                logger.info("Connected to SMTP server, starting TLS...")
                 if settings.SMTP_USE_TLS:
                     server.starttls()
+                logger.info("TLS started, attempting login...")
                 server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                logger.info("Login successful, sending message...")
                 server.send_message(message)
-            logger.info("Email sent to %s subject=%s", to_email, subject)
+            logger.info("Email sent successfully to %s subject=%s", to_email, subject)
             return
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error("SMTP authentication failed for %s: %s", settings.SMTP_USERNAME, e)
+            raise EmailDeliveryError(f"Email authentication failed. Check your username and App Password.")
+        except smtplib.SMTPException as e:
+            logger.error("SMTP error occurred: %s", e)
+            raise EmailDeliveryError(f"SMTP error: {e}")
         except Exception as e:
             logger.error("Failed to send email via SMTP: %s", e)
             raise EmailDeliveryError(f"Failed to send email: {e}")

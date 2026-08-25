@@ -56,6 +56,7 @@ export default function VerifyEmailPage() {
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-300"><Leaf size={32} /></div>
       <h1 className="mt-5 text-center text-3xl font-black">Verify your email</h1>
       <p className="mt-2 text-center text-sm text-slate-300">We will send a six-digit code. It expires after five minutes.</p>
+      <p className="mt-1 text-center text-xs text-slate-400">Check your spam folder if you don't see the email within 1 minute.</p>
       <label className="mt-6 block text-sm font-semibold text-slate-200">Email
         <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none focus:border-emerald-400" />
       </label>

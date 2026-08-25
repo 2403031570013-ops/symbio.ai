@@ -84,6 +84,22 @@ async def health_check() -> dict:
     return {"success": True, "message": "ok"}
 
 
+@router.post("/test-email", response_model=SuccessResponse)
+async def test_email(payload: dict) -> Any:
+    """Test email configuration by sending a test email."""
+    email = (payload.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    
+    try:
+        from app.services.email_service import send_email
+        send_email(email, "SymbioAI Test Email", "This is a test email from SymbioAI. Your email configuration is working correctly!")
+        return {"success": True, "message": "Test email sent successfully", "data": {"email": email}}
+    except Exception as e:
+        logger.error("Test email failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Test email failed: {str(e)}")
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     if not plain_password or not hashed_password:
         return False
@@ -330,7 +346,7 @@ async def verify_otp(payload: OtpVerification, db: Session = Depends(get_db)) ->
         if not user:
             raise HTTPException(status_code=400, detail="Invalid or expired OTP")
         if user.email_verified:
-            raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+            raise HTTPException(status_code=400, detail="Email already verified")
         user.email_verified = True
         user.email_verification_token = None
         await user.save()
