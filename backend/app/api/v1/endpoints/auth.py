@@ -196,10 +196,14 @@ async def register(user_in: UserCreate, response: Response, db: Session = Depend
     )
     await user.insert()
     logger.info("Registered user %s", user.email)
+    
+    # Send welcome email without blocking registration
     try:
         send_welcome_email(user.email, user.full_name)
     except EmailNotConfigured:
         logger.info("SMTP not configured; skipped welcome email for %s", user.email)
+    except Exception as e:
+        logger.warning("Failed to send welcome email for %s: %s", user.email, e)
 
     token = create_access_token(user.email)
     refresh_token = await _issue_refresh_token(user)

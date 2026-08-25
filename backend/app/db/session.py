@@ -320,7 +320,7 @@ async def connect_to_mongo():
     
     try:
         logger.info(f"Attempting to connect to MongoDB at {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'unknown host'}")
-        client = AsyncIOMotorClient(settings.DATABASE_URL, serverSelectionTimeoutMS=5000)
+        client = AsyncIOMotorClient(settings.DATABASE_URL, serverSelectionTimeoutMS=30000)
         database = client[settings.DATABASE_NAME]
         
         # Verify connectivity with a ping

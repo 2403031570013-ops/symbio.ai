@@ -3,7 +3,7 @@
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
-  timeout: 15000,
+  timeout: 60000, // Increased to 60 seconds for slower database/email operations
 });
 
 api.interceptors.request.use((config) => {
