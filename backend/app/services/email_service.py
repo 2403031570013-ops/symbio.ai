@@ -65,16 +65,44 @@ def send_email(to_email: str, subject: str, body: str) -> None:
     message["Subject"] = subject
     message.set_content(body)
 
-    try:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as server:
-            if settings.SMTP_USE_TLS:
-                server.starttls()
-            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-            server.send_message(message)
-        logger.info("Email sent to %s subject=%s", to_email, subject)
-    except Exception as e:
-        logger.error("Failed to send email via SMTP: %s", e)
-        raise EmailDeliveryError(f"Failed to send email: {e}")
+    # Try SMTP if configured
+    if settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+        try:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as server:
+                if settings.SMTP_USE_TLS:
+                    server.starttls()
+                server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                server.send_message(message)
+            logger.info("Email sent to %s subject=%s", to_email, subject)
+            return
+        except Exception as e:
+            logger.error("Failed to send email via SMTP: %s", e)
+            raise EmailDeliveryError(f"Failed to send email: {e}")
+    
+    # If SMTP not configured, try Resend
+    if settings.RESEND_API_KEY:
+        try:
+            response = httpx.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+                json={
+                    "from": settings.SMTP_FROM_EMAIL,
+                    "to": [to_email],
+                    "subject": subject,
+                    "text": body,
+                },
+                timeout=15.0,
+            )
+            if response.status_code >= 400:
+                raise EmailDeliveryError(f"Resend API returned status {response.status_code}")
+            logger.info("Email sent via Resend to %s subject=%s", to_email, subject)
+            return
+        except Exception as e:
+            logger.error("Failed to send email via Resend: %s", e)
+            raise EmailDeliveryError(f"Failed to send email via Resend: {e}")
+    
+    # No email provider configured
+    raise EmailNotConfigured("No email provider configured. Please configure SMTP or RESEND_API_KEY")
 
 
 def send_welcome_email(to_email: str, full_name: str) -> None:
@@ -98,3 +126,37 @@ def send_password_reset_email(to_email: str, token: str) -> None:
         send_email(to_email, "Reset your SymbioAI password", f"Reset your password using this secure link:\n{link}")
     except (EmailNotConfigured, EmailDeliveryError) as e:
         logger.info("Password reset email not sent for %s: %s", to_email, e)
+
+
+class SmsNotConfigured(RuntimeError):
+    pass
+
+
+class SmsDeliveryError(RuntimeError):
+    """Raised when SMS provider cannot send the message."""
+    pass
+
+
+def send_sms_otp(phone_number: str, otp: str) -> None:
+    """Send OTP via SMS using Twilio."""
+    if not settings.TWILIO_ACCOUNT_SID or not settings.TWILIO_AUTH_TOKEN or not settings.TWILIO_PHONE_NUMBER:
+        raise SmsNotConfigured("Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER")
+    
+    try:
+        from twilio.rest import Client
+        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+        
+        message = client.messages.create(
+            body=f"Your SymbioAI verification code is: {otp}. Valid for 5 minutes.",
+            from_=settings.TWILIO_PHONE_NUMBER,
+            to=phone_number
+        )
+        
+        logger.info("SMS OTP sent to %s via Twilio", phone_number)
+        return message.sid
+        
+    except ImportError:
+        raise SmsNotConfigured("Twilio library not installed. Install with: pip install twilio")
+    except Exception as e:
+        logger.error("Failed to send SMS via Twilio: %s", e)
+        raise SmsDeliveryError(f"Failed to send SMS: {e}")

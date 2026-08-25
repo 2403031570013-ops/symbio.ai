@@ -28,7 +28,7 @@ export default function VerifyEmailPage() {
       const response = await api.post('/auth/send-otp', { email });
       const devOtp = response.data?.data?.dev_otp;
       if (devOtp) {
-        setMessage(`Your verification code is: ${devOtp}`);
+        setMessage(`Email provider not configured. Your verification code is: ${devOtp}`);
         setOtp(devOtp); // Auto-fill the OTP for convenience
       } else {
         setMessage(response.data?.message || 'Verification code sent.');

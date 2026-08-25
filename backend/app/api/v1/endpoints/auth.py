@@ -27,9 +27,12 @@ from app.core.security import get_current_user
 from app.services.email_service import (
     EmailDeliveryError,
     EmailNotConfigured,
+    SmsDeliveryError,
+    SmsNotConfigured,
     send_email,
     send_password_reset_email,
     send_resend_verification_otp,
+    send_sms_otp,
     send_verification_email,
     send_welcome_email,
 )
@@ -267,9 +270,14 @@ async def _send_otp_for_email(email: str) -> Any:
     email_configured = settings.RESEND_API_KEY or (settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD)
     
     response_data = {"cooldown_seconds": 60, "expires_in_seconds": 300}
+    
+    # Always show OTP in development mode or if email is not configured
     if dev_mode or not email_configured:
         response_data["dev_otp"] = otp
-        message = f"Verification code: {otp} (Development mode - code shown for testing)"
+        if not email_configured:
+            message = f"Email provider not configured. Your verification code is: {otp}"
+        else:
+            message = f"Development mode - Your verification code is: {otp}"
     else:
         message = "Verification code sent. It expires in 5 minutes."
     
@@ -373,20 +381,31 @@ async def _send_mobile_otp_for_user(user_id: str, phone_number: str) -> Any:
     )
     await mobile_challenge.insert()
     
-    # Development uses deterministic OTPs; production should plug in an SMS provider.
-    # For now, we'll use the same approach as email OTP - allow testing without SMS
+    # Try to send SMS if configured
+    sms_configured = settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_PHONE_NUMBER
+    if sms_configured and settings.ENVIRONMENT.lower() == "production":
+        try:
+            send_sms_otp(phone_number, otp)
+        except SmsNotConfigured:
+            logger.warning("SMS provider not configured. OTP generated but not sent.")
+        except SmsDeliveryError as e:
+            logger.error("Failed to send SMS OTP: %s", e)
     
     user.phone_number = phone_number
     await user.save()
     
-    # In development, include the OTP in response for testing
+    # In development or if SMS not configured, include the OTP in response for testing
     dev_mode = settings.ENVIRONMENT.lower() != "production"
     response_data = {"cooldown_seconds": 60, "expires_in_seconds": 300}
-    if dev_mode:
+    
+    if dev_mode or not sms_configured:
         response_data["dev_otp"] = otp
-        message = f"Verification code: {otp} (Development mode - code shown for testing)"
+        if not sms_configured:
+            message = f"SMS provider not configured. Your verification code is: {otp}"
+        else:
+            message = f"Development mode - Your verification code is: {otp}"
     else:
-        message = "Verification code sent. It expires in 5 minutes."
+        message = "Verification code sent to your mobile. It expires in 5 minutes."
     
     return {"success": True, "message": message, "data": response_data}
 

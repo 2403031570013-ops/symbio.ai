@@ -32,13 +32,17 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: SMTP_HOST
-        sync: false
+        value: smtp.gmail.com
       - key: SMTP_PORT
-        sync: false
+        value: 587
       - key: SMTP_USERNAME
         sync: false
+        # Your Gmail address (e.g., your-email@gmail.com)
       - key: SMTP_PASSWORD
         sync: false
+        # Your Gmail App Password (not regular password - generate at https://myaccount.google.com/apppasswords)
+      - key: SMTP_FROM_EMAIL
+        value: noreply@symbioai.com
       - key: SMTP_FROM_EMAIL
         value: no-reply@symbioai.com
       - key: S3_BUCKET
@@ -52,6 +56,12 @@ services:
       - key: CLOUD_STORAGE_KEYS
         sync: false
       - key: OPENAI_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
         sync: false
       - key: FACTORY_VERIFICATION_CODE
         value: "SYMBIO2024"
