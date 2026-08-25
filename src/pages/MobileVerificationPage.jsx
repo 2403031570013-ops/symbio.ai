@@ -44,7 +44,7 @@ export default function MobileVerificationPage() {
         setMessage(`SMS provider not configured. Your verification code is: ${devOtp}`);
         setOtp(devOtp); // Auto-fill the OTP for convenience
       } else {
-        setMessage(response.data?.message || 'Verification code sent.');
+        setMessage('Verification code sent to your mobile. Please check your SMS.');
       }
       setCooldown(response.data?.data?.cooldown_seconds || 60);
       setOtpSent(true);

@@ -31,7 +31,7 @@ export default function VerifyEmailPage() {
         setMessage(`Email provider not configured. Your verification code is: ${devOtp}`);
         setOtp(devOtp); // Auto-fill the OTP for convenience
       } else {
-        setMessage(response.data?.message || 'Verification code sent.');
+        setMessage('Verification code sent to your email. Please check your inbox.');
       }
       setCooldown(response.data?.data?.cooldown_seconds || 60);
     } catch (requestError) {

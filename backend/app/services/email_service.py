@@ -34,12 +34,12 @@ def send_resend_verification_otp(to_email: str, otp: str) -> None:
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
             json={
-                "from": "onboarding@resend.dev",
+                "from": settings.SMTP_FROM_EMAIL or "noreply@symbioai.com",
                 "to": [to_email],
                 "subject": "SymbioAI Email Verification",
                 "html": html,
             },
-            timeout=15.0,
+            timeout=30.0,
         )
     except httpx.HTTPError as exc:
         logger.warning("Resend OTP delivery failed for %s: %s", to_email, type(exc).__name__)

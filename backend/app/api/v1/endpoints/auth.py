@@ -246,18 +246,18 @@ async def _send_otp_for_email(email: str) -> Any:
     )
     await challenge.insert()
     
-    # Only try to send email in production if configured
-    if settings.ENVIRONMENT.lower() == "production":
+    # Try to send email if configured (works in both dev and production)
+    email_configured = settings.RESEND_API_KEY or (settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD)
+    if email_configured:
         try:
             if settings.OTP_PROVIDER.lower() == "resend" and settings.RESEND_API_KEY:
                 send_resend_verification_otp(email, otp)
+                logger.info("Email OTP sent via Resend to %s", email)
             elif settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
                 # Fallback to SMTP if configured
                 from app.services.email_service import send_email
                 send_email(email, "SymbioAI Email Verification", f"Your verification code is: {otp}")
-            else:
-                # Email not configured but still allow verification with the generated OTP
-                logger.warning("Email provider not configured in production. OTP generated but not sent: %s", email)
+                logger.info("Email OTP sent via SMTP to %s", email)
         except EmailNotConfigured:
             logger.warning("Email provider not configured. OTP generated but not sent: %s", email)
         except EmailDeliveryError as e:
@@ -269,13 +269,13 @@ async def _send_otp_for_email(email: str) -> Any:
 
     logger.info("Verification OTP issued for %s", email)
     
-    # In development or if email not configured, include the OTP in response for testing
-    dev_mode = settings.ENVIRONMENT.lower() != "production"
+    # Check if email is actually configured and working
     email_configured = settings.RESEND_API_KEY or (settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD)
+    dev_mode = settings.ENVIRONMENT.lower() != "production"
     
     response_data = {"cooldown_seconds": 60, "expires_in_seconds": 300}
     
-    # Always show OTP in development mode or if email is not configured
+    # Show OTP in development mode or if email is not configured
     if dev_mode or not email_configured:
         response_data["dev_otp"] = otp
         if not email_configured:
@@ -306,6 +306,24 @@ async def verify_otp(payload: OtpVerification, db: Session = Depends(get_db)) ->
     if len(otp) != 6 or not otp.isdigit():
         raise HTTPException(status_code=400, detail="OTP must be a 6-digit code")
 
+    # First try to validate with the stored OTP from database
+    now = _now_utc_naive()
+    challenge = await EmailOtp.find({"email": email, "used_at": None}).sort("-created_at").first_or_none()
+    
+    if challenge and _as_utc_naive(challenge.expires_at) > now:
+        if hmac.compare_digest(challenge.otp_hash, _otp_digest(otp)):
+            user = await User.find_one({"email": email})
+            if not user:
+                raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+            challenge.used_at = now
+            user.email_verified = True
+            user.email_verification_token = None
+            await challenge.save()
+            await user.save()
+            logger.info("Email verified with OTP for %s", email)
+            return {"success": True, "message": "Email verified successfully.", "data": {"verified": True}}
+    
+    # Fallback to development OTP for testing
     dev_otp = _development_email_otp()
     if settings.ENVIRONMENT.lower() != "production" and hmac.compare_digest(otp, dev_otp):
         user = await User.find_one({"email": email})
@@ -316,26 +334,11 @@ async def verify_otp(payload: OtpVerification, db: Session = Depends(get_db)) ->
         user.email_verified = True
         user.email_verification_token = None
         await user.save()
+        logger.info("Email verified with development OTP for %s", email)
         return {"success": True, "message": "Email verified successfully.", "data": {"verified": True}}
 
-    now = _now_utc_naive()
-    challenge = await EmailOtp.find({"email": email, "used_at": None}).sort("-created_at").first_or_none()
-    if not challenge or _as_utc_naive(challenge.expires_at) <= now:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-    if not hmac.compare_digest(challenge.otp_hash, _otp_digest(otp)):
-        logger.warning("Invalid email OTP submitted for %s", email)
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-
-    user = await User.find_one({"email": email})
-    if not user:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-    challenge.used_at = now
-    user.email_verified = True
-    user.email_verification_token = None
-    await challenge.save()
-    await user.save()
-    logger.info("Email verified with OTP for %s", email)
-    return {"success": True, "message": "Email verified successfully.", "data": {"verified": True}}
+    logger.warning("Invalid email OTP submitted for %s", email)
+    raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
 
 @router.post("/verify-factory", response_model=SuccessResponse)
@@ -387,9 +390,10 @@ async def _send_mobile_otp_for_user(user_id: str, phone_number: str) -> Any:
     
     # Try to send SMS if configured
     sms_configured = settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_PHONE_NUMBER
-    if sms_configured and settings.ENVIRONMENT.lower() == "production":
+    if sms_configured:
         try:
             send_sms_otp(phone_number, otp)
+            logger.info("SMS OTP sent to %s", phone_number)
         except SmsNotConfigured:
             logger.warning("SMS provider not configured. OTP generated but not sent.")
         except SmsDeliveryError as e:
@@ -431,17 +435,7 @@ async def verify_mobile(payload: MobileOtpVerification, db: Session = Depends(ge
     if len(otp) != 6 or not otp.isdigit():
         raise HTTPException(status_code=400, detail="OTP must be a 6-digit code")
 
-    dev_otp = _development_mobile_otp()
-    if settings.ENVIRONMENT.lower() != "production" and hmac.compare_digest(otp, dev_otp):
-        user = await User.find_one({"_id": payload.user_id})
-        if not user:
-            raise HTTPException(status_code=400, detail="User not found")
-        if user.mobile_verified:
-            raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-        user.mobile_verified = True
-        await user.save()
-        return {"success": True, "message": "Mobile verified successfully.", "data": {"verified": True}}
-    
+    # First try to validate with the stored OTP from database
     user = await User.find_one({"_id": payload.user_id})
     if not user:
         raise HTTPException(status_code=400, detail="User not found")
@@ -449,20 +443,27 @@ async def verify_mobile(payload: MobileOtpVerification, db: Session = Depends(ge
     now = _now_utc_naive()
     challenge = await MobileOtp.find({"user_id": payload.user_id, "used_at": None}).sort("-created_at").first_or_none()
     
-    if not challenge or _as_utc_naive(challenge.expires_at) <= now:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+    if challenge and _as_utc_naive(challenge.expires_at) > now:
+        if hmac.compare_digest(challenge.otp_hash, _otp_digest(otp)):
+            challenge.used_at = now
+            user.mobile_verified = True
+            await challenge.save()
+            await user.save()
+            logger.info("Mobile verified with OTP for user %s", payload.user_id)
+            return {"success": True, "message": "Mobile verified successfully.", "data": {"verified": True}}
     
-    if not hmac.compare_digest(challenge.otp_hash, _otp_digest(otp)):
-        logger.warning("Invalid mobile OTP submitted for user %s", payload.user_id)
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+    # Fallback to development OTP for testing
+    dev_otp = _development_mobile_otp()
+    if settings.ENVIRONMENT.lower() != "production" and hmac.compare_digest(otp, dev_otp):
+        if user.mobile_verified:
+            raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+        user.mobile_verified = True
+        await user.save()
+        logger.info("Mobile verified with development OTP for user %s", payload.user_id)
+        return {"success": True, "message": "Mobile verified successfully.", "data": {"verified": True}}
     
-    challenge.used_at = now
-    user.mobile_verified = True
-    await challenge.save()
-    await user.save()
-    
-    logger.info("Mobile verified with OTP for user %s", payload.user_id)
-    return {"success": True, "message": "Mobile verified successfully.", "data": {"verified": True}}
+    logger.warning("Invalid mobile OTP submitted for user %s", payload.user_id)
+    raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
 
 @router.post("/login", response_model=SuccessResponse)
