@@ -65,7 +65,7 @@ def send_email(to_email: str, subject: str, body: str) -> None:
     message["Subject"] = subject
     message.set_content(body)
 
-    # Try SMTP if configured
+    # Try SMTP first (highest priority)
     if settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
         try:
             logger.info("Attempting to send email via SMTP to %s using server %s", to_email, settings.SMTP_HOST)
@@ -77,7 +77,7 @@ def send_email(to_email: str, subject: str, body: str) -> None:
                 server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
                 logger.info("Login successful, sending message...")
                 server.send_message(message)
-            logger.info("Email sent successfully to %s subject=%s", to_email, subject)
+            logger.info("Email sent successfully via SMTP to %s subject=%s", to_email, subject)
             return
         except smtplib.SMTPAuthenticationError as e:
             logger.error("SMTP authentication failed for %s: %s", settings.SMTP_USERNAME, e)
@@ -89,9 +89,10 @@ def send_email(to_email: str, subject: str, body: str) -> None:
             logger.error("Failed to send email via SMTP: %s", e)
             raise EmailDeliveryError(f"Failed to send email: {e}")
     
-    # If SMTP not configured, try Resend
+    # Fallback to Resend if SMTP not configured
     if settings.RESEND_API_KEY:
         try:
+            logger.info("SMTP not configured, trying Resend for %s", to_email)
             response = httpx.post(
                 "https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
@@ -104,6 +105,7 @@ def send_email(to_email: str, subject: str, body: str) -> None:
                 timeout=15.0,
             )
             if response.status_code >= 400:
+                logger.error("Resend API returned status %s for %s", response.status_code, to_email)
                 raise EmailDeliveryError(f"Resend API returned status {response.status_code}")
             logger.info("Email sent via Resend to %s subject=%s", to_email, subject)
             return

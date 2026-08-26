@@ -263,17 +263,21 @@ async def _send_otp_for_email(email: str) -> Any:
     await challenge.insert()
     
     # Try to send email if configured (works in both dev and production)
-    email_configured = settings.RESEND_API_KEY or (settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD)
-    if email_configured:
+    # Priority: SMTP first, then Resend as fallback
+    smtp_configured = settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD
+    resend_configured = settings.RESEND_API_KEY
+    
+    if smtp_configured or resend_configured:
         try:
-            if settings.OTP_PROVIDER.lower() == "resend" and settings.RESEND_API_KEY:
-                send_resend_verification_otp(email, otp)
-                logger.info("Email OTP sent via Resend to %s", email)
-            elif settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
-                # Fallback to SMTP if configured
+            # Try SMTP first (higher priority)
+            if smtp_configured:
                 from app.services.email_service import send_email
                 send_email(email, "SymbioAI Email Verification", f"Your verification code is: {otp}")
                 logger.info("Email OTP sent via SMTP to %s", email)
+            # Fallback to Resend if SMTP not configured
+            elif resend_configured:
+                send_resend_verification_otp(email, otp)
+                logger.info("Email OTP sent via Resend to %s", email)
         except EmailNotConfigured:
             logger.warning("Email provider not configured. OTP generated but not sent: %s", email)
         except EmailDeliveryError as e:

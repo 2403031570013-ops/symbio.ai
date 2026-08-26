@@ -29,7 +29,8 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: RESEND_API_KEY
-        sync: false
+        value: ""
+        # Leave empty to use SMTP, or set Resend API key for Resend service
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
